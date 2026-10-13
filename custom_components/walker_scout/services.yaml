@@ -1,0 +1,24 @@
+search_now:
+refresh:
+skip_pick:
+  fields:
+    item_id:
+      required: true
+      example: "278435397313"
+      selector:
+        text:
+restore_skipped:
+mark_filed:
+  fields:
+    ids:
+      required: true
+      example: ["412", "413"]
+      selector:
+        object:
+gixen_refresh:
+  fields:
+    login:
+      default: false
+      selector:
+        boolean:
+send_test_alert:

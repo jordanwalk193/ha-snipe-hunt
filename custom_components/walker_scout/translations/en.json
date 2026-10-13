@@ -1,0 +1,303 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Walker Scout",
+        "description": "Walker Scout runs on its own machine. Enter where its API listens and its token.",
+        "data": {
+          "url": "Bot address",
+          "token": "API token"
+        },
+        "data_description": {
+          "url": "Where the bot's API listens, for example http://192.0.2.10:8766",
+          "token": "The API_TOKEN value from the bot's env file"
+        }
+      },
+      "reconfigure": {
+        "title": "Walker Scout moved",
+        "data": {
+          "url": "Bot address",
+          "token": "API token"
+        },
+        "data_description": {
+          "url": "Where the bot's API listens, for example http://192.0.2.10:8766",
+          "token": "The API_TOKEN value from the bot's env file"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Walker Scout token",
+        "description": "The bot stopped accepting the saved token. Enter the current one.",
+        "data": {
+          "token": "API token"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Can't reach the bot at that address. Check the address and that its API service is running.",
+      "invalid_auth": "The bot rejected that token.",
+      "unsupported": "The bot and this integration are on different API versions. Update whichever is older."
+    },
+    "abort": {
+      "single_instance_allowed": "Walker Scout is already set up.",
+      "reconfigure_successful": "Saved.",
+      "reauth_successful": "Token saved."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Walker Scout options",
+        "data": {
+          "scan_interval": "Check the bot every",
+          "tabs": "Dashboard tabs",
+          "picks_per_page": "Picks shown before \"Show all\"",
+          "accent_color": "Accent colour",
+          "event_tiers": "Fire a new-pick event for",
+          "report_url": "Weekly reports folder"
+        },
+        "data_description": {
+          "tabs": "Which tabs the Walker Scout dashboard strategy builds, in this order.",
+          "event_tiers": "A walker_scout_new_pick event fires for each new pick in these tiers, for your own automations.",
+          "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Bot tab links to the latest one."
+        }
+      }
+    }
+  },
+  "selector": {
+    "tabs": {
+      "options": {
+        "today": "Today",
+        "picks": "Picks",
+        "gixen": "Gixen",
+        "collection": "Collection",
+        "bot": "Bot"
+      }
+    },
+    "tiers": {
+      "options": {
+        "fire": "Brag picks",
+        "green": "Value picks",
+        "yellow": "Cheap new cards"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "status": {
+        "name": "Status",
+        "state": {
+          "ok": "Running",
+          "stale": "No recent search",
+          "failing": "Failing"
+        }
+      },
+      "live_picks": {
+        "name": "Live picks"
+      },
+      "auction_picks": {
+        "name": "Auction picks"
+      },
+      "buy_now_picks": {
+        "name": "Buy It Now picks"
+      },
+      "need_snipe": {
+        "name": "Needs a snipe"
+      },
+      "top_pick": {
+        "name": "Top pick"
+      },
+      "listings": {
+        "name": "Listings watched"
+      },
+      "new_listings": {
+        "name": "New listings in 24 hours"
+      },
+      "alerts_sent": {
+        "name": "Alerts sent in 24 hours"
+      },
+      "last_search": {
+        "name": "Last search"
+      },
+      "last_good_run": {
+        "name": "Last good run"
+      },
+      "last_action": {
+        "name": "Last button press"
+      },
+      "gixen_snipes": {
+        "name": "Gixen snipes"
+      },
+      "gixen_over_max": {
+        "name": "Snipes over your max"
+      },
+      "gixen_committed": {
+        "name": "Snipes still in play"
+      },
+      "next_snipe": {
+        "name": "Next snipe ends"
+      },
+      "win_rate": {
+        "name": "Win rate"
+      },
+      "collection": {
+        "name": "Collection"
+      },
+      "collection_spent": {
+        "name": "Collection spend"
+      },
+      "month_spend": {
+        "name": "Spend this month"
+      },
+      "budget_left": {
+        "name": "Budget left this month"
+      },
+      "to_pay": {
+        "name": "To pay"
+      },
+      "in_transit": {
+        "name": "Cards in transit"
+      },
+      "to_file": {
+        "name": "Cards to file"
+      },
+      "want_list": {
+        "name": "Want list targets"
+      }
+    },
+    "binary_sensor": {
+      "searching": {
+        "name": "Searching eBay"
+      },
+      "problem": {
+        "name": "Bot problem"
+      },
+      "gixen_connected": {
+        "name": "Gixen"
+      },
+      "over_budget": {
+        "name": "Over budget"
+      }
+    },
+    "button": {
+      "search_now": {
+        "name": "Search eBay now"
+      },
+      "refresh": {
+        "name": "Refresh"
+      },
+      "gixen_reread": {
+        "name": "Re-read Gixen"
+      },
+      "gixen_sign_in": {
+        "name": "Sign in to Gixen"
+      },
+      "restore_skipped": {
+        "name": "Restore skipped picks"
+      },
+      "test_alert": {
+        "name": "Send test alert"
+      }
+    },
+    "number": {
+      "monthly_budget": {
+        "name": "Monthly budget"
+      },
+      "yellow_max_total": {
+        "name": "Cheap-card alert limit"
+      },
+      "urgent_hours": {
+        "name": "Urgent auction window"
+      },
+      "need_snipe_hours": {
+        "name": "Needs-a-snipe window"
+      },
+      "gixen_relogin_minutes": {
+        "name": "Gixen sign-back-in wait"
+      }
+    },
+    "switch": {
+      "alerts_enabled": {
+        "name": "Phone alerts"
+      },
+      "alert_fire": {
+        "name": "Alert on brag picks"
+      },
+      "alert_green": {
+        "name": "Alert on value picks"
+      },
+      "alert_cheap_yellow": {
+        "name": "Alert on cheap new cards"
+      },
+      "quiet_hours": {
+        "name": "Quiet hours"
+      },
+      "gixen_enabled": {
+        "name": "Read Gixen snipes"
+      }
+    },
+    "time": {
+      "quiet_start": {
+        "name": "Quiet hours start"
+      },
+      "quiet_end": {
+        "name": "Quiet hours end"
+      }
+    },
+    "text": {
+      "sellers": {
+        "name": "Watched sellers"
+      },
+      "extra_searches": {
+        "name": "Extra searches"
+      }
+    }
+  },
+  "services": {
+    "search_now": {
+      "name": "Search eBay now",
+      "description": "Starts the bot's hourly search right away."
+    },
+    "refresh": {
+      "name": "Refresh",
+      "description": "Reads a fresh snapshot from the bot."
+    },
+    "skip_pick": {
+      "name": "Skip a pick",
+      "description": "Hides one pick from the dashboard.",
+      "fields": {
+        "item_id": {
+          "name": "eBay item number",
+          "description": "The listing to hide."
+        }
+      }
+    },
+    "restore_skipped": {
+      "name": "Restore skipped picks",
+      "description": "Brings back every pick hidden with Skip."
+    },
+    "mark_filed": {
+      "name": "Mark cards filed",
+      "description": "Marks delivered cards as filed in the binder and updates the inventory.",
+      "fields": {
+        "ids": {
+          "name": "Card ids",
+          "description": "Inventory ids of the delivered cards."
+        }
+      }
+    },
+    "gixen_refresh": {
+      "name": "Re-read Gixen",
+      "description": "Reads the scheduled snipes from Gixen now. Read-only: it never changes a snipe.",
+      "fields": {
+        "login": {
+          "name": "Sign in again",
+          "description": "Sign the bot back in even if your browser took the session. This signs your browser out of Gixen."
+        }
+      }
+    },
+    "send_test_alert": {
+      "name": "Send test alert",
+      "description": "Sends a test alert to the phone the bot notifies."
+    }
+  }
+}

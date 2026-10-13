@@ -1,0 +1,185 @@
+{
+  "entity": {
+    "sensor": {
+      "status": {
+        "default": "mdi:robot-outline"
+      },
+      "live_picks": {
+        "default": "mdi:cards-playing-outline"
+      },
+      "auction_picks": {
+        "default": "mdi:timer-sand"
+      },
+      "buy_now_picks": {
+        "default": "mdi:cart-outline"
+      },
+      "need_snipe": {
+        "default": "mdi:target-account"
+      },
+      "top_pick": {
+        "default": "mdi:star-circle"
+      },
+      "listings": {
+        "default": "mdi:magnify"
+      },
+      "new_listings": {
+        "default": "mdi:new-box"
+      },
+      "alerts_sent": {
+        "default": "mdi:bell-outline"
+      },
+      "last_search": {
+        "default": "mdi:magnify-scan"
+      },
+      "last_good_run": {
+        "default": "mdi:check-circle-outline"
+      },
+      "last_action": {
+        "default": "mdi:gesture-tap"
+      },
+      "gixen_snipes": {
+        "default": "mdi:target"
+      },
+      "gixen_over_max": {
+        "default": "mdi:trending-up"
+      },
+      "gixen_committed": {
+        "default": "mdi:cash-lock"
+      },
+      "next_snipe": {
+        "default": "mdi:timer-outline"
+      },
+      "win_rate": {
+        "default": "mdi:trophy"
+      },
+      "collection": {
+        "default": "mdi:cards"
+      },
+      "collection_spent": {
+        "default": "mdi:cash-multiple"
+      },
+      "month_spend": {
+        "default": "mdi:cash"
+      },
+      "budget_left": {
+        "default": "mdi:piggy-bank-outline"
+      },
+      "to_pay": {
+        "default": "mdi:credit-card-outline"
+      },
+      "in_transit": {
+        "default": "mdi:truck-delivery-outline"
+      },
+      "to_file": {
+        "default": "mdi:book-open-page-variant"
+      },
+      "want_list": {
+        "default": "mdi:puzzle"
+      }
+    },
+    "binary_sensor": {
+      "searching": {
+        "default": "mdi:magnify"
+      },
+      "over_budget": {
+        "default": "mdi:cash-remove"
+      }
+    },
+    "button": {
+      "search_now": {
+        "default": "mdi:magnify"
+      },
+      "refresh": {
+        "default": "mdi:refresh"
+      },
+      "gixen_reread": {
+        "default": "mdi:target"
+      },
+      "gixen_sign_in": {
+        "default": "mdi:login"
+      },
+      "restore_skipped": {
+        "default": "mdi:eye-refresh-outline"
+      },
+      "test_alert": {
+        "default": "mdi:bell-ring-outline"
+      }
+    },
+    "number": {
+      "monthly_budget": {
+        "default": "mdi:piggy-bank-outline"
+      },
+      "yellow_max_total": {
+        "default": "mdi:currency-usd"
+      },
+      "urgent_hours": {
+        "default": "mdi:alarm"
+      },
+      "need_snipe_hours": {
+        "default": "mdi:target-account"
+      },
+      "gixen_relogin_minutes": {
+        "default": "mdi:account-clock-outline"
+      }
+    },
+    "switch": {
+      "alerts_enabled": {
+        "default": "mdi:bell"
+      },
+      "alert_fire": {
+        "default": "mdi:fire"
+      },
+      "alert_green": {
+        "default": "mdi:circle"
+      },
+      "alert_cheap_yellow": {
+        "default": "mdi:circle-outline"
+      },
+      "quiet_hours": {
+        "default": "mdi:sleep"
+      },
+      "gixen_enabled": {
+        "default": "mdi:target"
+      }
+    },
+    "time": {
+      "quiet_start": {
+        "default": "mdi:weather-night"
+      },
+      "quiet_end": {
+        "default": "mdi:weather-sunset-up"
+      }
+    },
+    "text": {
+      "sellers": {
+        "default": "mdi:account-search-outline"
+      },
+      "extra_searches": {
+        "default": "mdi:text-search"
+      }
+    }
+  },
+  "services": {
+    "search_now": {
+      "service": "mdi:magnify"
+    },
+    "refresh": {
+      "service": "mdi:refresh"
+    },
+    "skip_pick": {
+      "service": "mdi:eye-off-outline"
+    },
+    "restore_skipped": {
+      "service": "mdi:eye-refresh-outline"
+    },
+    "mark_filed": {
+      "service": "mdi:book-open-page-variant"
+    },
+    "gixen_refresh": {
+      "service": "mdi:target"
+    },
+    "send_test_alert": {
+      "service": "mdi:bell-ring-outline"
+    }
+  }
+}
