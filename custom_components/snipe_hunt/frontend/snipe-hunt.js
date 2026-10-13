@@ -209,9 +209,10 @@ const PANELS = {
   }],
 
   top_pick: ['Top pick', true, c => {
-    // The best 🔥/🟢 pick you haven't sniped yet; if they're all covered, the best one.
+    // The best steal among the 🔥/🟢 picks you haven't sniped yet; with no rated
+    // steal, the best of them by tier; if they're all covered, the best one.
     const good = c.picks.filter(x => GOOD.includes(x.tier));
-    const p = good.find(x => x.snipe == null) || good[0];
+    const p = steals(good).find(x => x.snipe == null) || good.find(x => x.snipe == null) || good[0];
     if (!p) return empty('No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
     const t = TIER[p.tier] || ['•', '#546e7a'];
     const gap = room(p);
