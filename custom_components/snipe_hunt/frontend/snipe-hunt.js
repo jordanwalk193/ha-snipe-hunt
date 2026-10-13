@@ -1,17 +1,17 @@
-/* Walker Scout dashboard cards and dashboard strategy.
+/* Snipe Hunt dashboard cards and dashboard strategy.
  *
- * One card type, `custom:walker-scout-card`, draws any of the panels below
+ * One card type, `custom:snipe-hunt-card`, draws any of the panels below
  * (`panel: summary`, `panel: all_picks`, ...). The strategy
- * `custom:walker-scout` lays the panels out as a ready-made dashboard.
+ * `custom:snipe-hunt` lays the panels out as a ready-made dashboard.
  *
  * Data comes from the integration over one websocket subscription shared by
- * every card on the page; buttons go back through `walker_scout/action`.
+ * every card on the page; buttons go back through `snipe_hunt/action`.
  * Nothing here can bid, buy or change a snipe.
  */
-const DOMAIN = 'walker_scout';
+const DOMAIN = 'snipe_hunt';
 const GIXEN_URL = 'https://www.gixen.com/main/home_2.php';
-// Auctions for the bot's player, ending soonest. Older bots don't say who that is.
-const ebayUrl = d => 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(((d.profile || {}).player || 'jordan walker').toLowerCase()) + '&_sop=1&LH_Auction=1';
+// Auctions for the bot's player, ending soonest.
+const ebayUrl = d => 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(((d.profile || {}).player || 'sports cards').toLowerCase()) + '&_sop=1&LH_Auction=1';
 const HOUR = 3600e3;
 
 // ---------------------------------------------------------------- data feed
@@ -26,7 +26,7 @@ const feed = {
       this.data = msg.snapshot; this.options = msg.options || {}; this.ok = msg.ok; this.error = null;
       this.redraw();
     }, {type: DOMAIN + '/subscribe'}).catch(err => {
-      this.error = (err && err.message) || 'Walker Scout is not set up';
+      this.error = (err && err.message) || 'Snipe Hunt is not set up';
       this.started = false;
       this.redraw();
       setTimeout(() => this.cards.size && this.start(hass), 15000);
@@ -157,7 +157,7 @@ const snipeRow = s => {
   </div>`;
 };
 const gixenDown = c => c.gixenOff
-  ? `<div style="padding-top:12px"><b>Gixen reading is off.</b><div class="muted" style="font-size:13px;margin-top:4px">Turn on "Read Gixen snipes" in the Walker Scout settings to see your snipes here.</div></div>`
+  ? `<div style="padding-top:12px"><b>Gixen reading is off.</b><div class="muted" style="font-size:13px;margin-top:4px">Turn on "Read Gixen snipes" in the Snipe Hunt settings to see your snipes here.</div></div>`
   : `<div style="padding-top:12px"><b>Can't read Gixen yet.</b><div class="muted" style="font-size:13px;margin:4px 0 8px">${esc(c.gixen.problem || 'Waiting for the first read')}.</div>${act('Sign in to Gixen now', {action: 'gixen_refresh', login: true}, {busy: 'Signing in…', color: '#6a1b9a'})}</div>`;
 const gixenStale = g => `<div class="warn">List is from ${ago(g.read_at)}. ${esc(g.problem)}.<br>${act('Sign in now', {action: 'gixen_refresh', login: true}, {busy: 'Signing in…', color: '#6a1b9a'})} <span class="muted">This signs your browser out of Gixen.</span></div>`;
 const searchBtn = c => c.d.status.searching ? pill('Searching eBay…', '#1e88e5') : act('Search eBay now', {action: 'search'}, {busy: 'Starting…', color: c.accent});
@@ -443,7 +443,7 @@ const STYLE = `
 `;
 
 // --------------------------------------------------------------------- card
-class WalkerScoutCard extends HTMLElement {
+class SnipeHuntCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({mode: 'open'});
@@ -580,21 +580,21 @@ class WalkerScoutCard extends HTMLElement {
 }
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: 'walker-scout-card', name: 'Walker Scout',
-  description: 'One panel of the Walker Scout card bot: picks, snipes, the collection or bot health.',
+  type: 'snipe-hunt-card', name: 'Snipe Hunt',
+  description: 'One panel of the Snipe Hunt card bot: picks, snipes, the collection or bot health.',
 });
 
 // ----------------------------------------------------------------- strategy
-// dashboard:  strategy: {type: custom:walker-scout}
+// dashboard:  strategy: {type: custom:snipe-hunt}
 // Optional:   tabs: [today, picks, ...]   (overrides the integration option)
-const panel = (name, extra) => ({type: 'custom:walker-scout-card', panel: name, ...extra});
+const panel = (name, extra) => ({type: 'custom:snipe-hunt-card', panel: name, ...extra});
 const heading = (text, icon, entity) => ({
   type: 'heading', heading: text, icon, heading_style: 'title',
   ...(entity ? {badges: [{type: 'entity', entity}]} : {}),
 });
 const section = (...cards) => ({type: 'grid', cards: cards.filter(Boolean)});
 
-class WalkerScoutStrategy {
+class SnipeHuntStrategy {
   static async generate(config, hass) {
     let options = {};
     try { options = await hass.callWS({type: DOMAIN + '/options'}); } catch (e) { /* cards say why */ }
@@ -643,20 +643,20 @@ class WalkerScoutStrategy {
             ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches']]
             .map(([domain, key]) => id(domain, key))
             // A setting the bot doesn't expose is unavailable; leave it off the list.
-            .filter(e => e && hass.states[e] && hass.states[e].state !== 'unavailable')
-            .map(e => ({entity: e, name: String(hass.states[e].attributes.friendly_name || e).replace(/^Walker Scout Bot /, '')})),
+            .filter(e => e && hass.states && hass.states[e] && hass.states[e].state !== 'unavailable')
+            .map(e => ({entity: e, name: String(hass.states[e].attributes.friendly_name || e).replace(/^Snipe Hunt /, '')})),
         }),
       ]},
     };
     const tabs = (config.tabs || options.tabs || Object.keys(VIEWS)).filter(t => VIEWS[t]);
     return {
-      title: config.title || 'Walker Scout',
+      title: config.title || 'Snipe Hunt',
       views: (tabs.length ? tabs : Object.keys(VIEWS)).map(t => ({type: 'sections', max_columns: 3, ...VIEWS[t]})),
     };
   }
 }
-class WalkerScoutStrategyElement extends HTMLElement {
-  static async generate(config, hass) { return WalkerScoutStrategy.generate(config, hass); }
+class SnipeHuntStrategyElement extends HTMLElement {
+  static async generate(config, hass) { return SnipeHuntStrategy.generate(config, hass); }
 }
 
 // Home Assistant swaps in its own element registry while it starts, and this
@@ -664,7 +664,7 @@ class WalkerScoutStrategyElement extends HTMLElement {
 // Home Assistant's own root element exists, then register on that registry.
 const register = () => {
   if (!customElements.get('home-assistant')) return setTimeout(register, 40);
-  if (!customElements.get('walker-scout-card')) customElements.define('walker-scout-card', WalkerScoutCard);
-  if (!customElements.get('ll-strategy-dashboard-walker-scout')) customElements.define('ll-strategy-dashboard-walker-scout', WalkerScoutStrategyElement);
+  if (!customElements.get('snipe-hunt-card')) customElements.define('snipe-hunt-card', SnipeHuntCard);
+  if (!customElements.get('ll-strategy-dashboard-snipe-hunt')) customElements.define('ll-strategy-dashboard-snipe-hunt', SnipeHuntStrategyElement);
 };
 register();

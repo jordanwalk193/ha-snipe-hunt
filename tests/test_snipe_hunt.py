@@ -8,8 +8,8 @@ from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.walker_scout.api import WalkerScoutAuthError, WalkerScoutError
-from custom_components.walker_scout.const import CONF_TOKEN, CONF_URL, DOMAIN, EVENT_NEW_PICK
+from custom_components.snipe_hunt.api import SnipeHuntAuthError, SnipeHuntError
+from custom_components.snipe_hunt.const import CONF_TOKEN, CONF_URL, DOMAIN, EVENT_NEW_PICK
 
 from .conftest import PICK
 
@@ -24,12 +24,12 @@ async def test_user_flow_checks_the_bot_before_saving(hass, bot):
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     assert result["type"] is FlowResultType.FORM
 
-    bot.error = WalkerScoutAuthError("no")
+    bot.error = SnipeHuntAuthError("no")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_URL: "bot.test:8766/", CONF_TOKEN: "bad"})
     assert result["errors"] == {"base": "invalid_auth"}
 
-    bot.error = WalkerScoutError("down")
+    bot.error = SnipeHuntError("down")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {CONF_URL: "bot.test:8766/", CONF_TOKEN: "t"})
     assert result["errors"] == {"base": "cannot_connect"}
@@ -123,25 +123,25 @@ async def test_new_picks_fire_an_event_once(hass, entry, bot):
 
 async def test_dashboard_websocket(hass, entry, bot, hass_ws_client):
     client = await hass_ws_client(hass)
-    await client.send_json_auto_id({"type": "walker_scout/subscribe"})
+    await client.send_json_auto_id({"type": "snipe_hunt/subscribe"})
     assert (await client.receive_json())["success"]
     event = (await client.receive_json())["event"]
     assert event["snapshot"]["picks"][0]["item_id"] == "111111111111"
     assert event["options"]["accent"] == "#c41e3a" and event["options"]["tabs"][0] == "today"
 
     await client.send_json_auto_id(
-        {"type": "walker_scout/action", "action": "skip", "data": {"item_id": "111111111111"}})
+        {"type": "snipe_hunt/action", "action": "skip", "data": {"item_id": "111111111111"}})
     messages = [await client.receive_json(), await client.receive_json()]
     assert any(m.get("result") == {"message": "Done."} for m in messages)
     assert any(m["type"] == "event" for m in messages)   # the fresh snapshot is pushed too
 
-    await client.send_json_auto_id({"type": "walker_scout/action", "action": "buy"})
+    await client.send_json_auto_id({"type": "snipe_hunt/action", "action": "buy"})
     reply = await client.receive_json()
     while reply["type"] == "event":
         reply = await client.receive_json()
     assert not reply["success"] and "Unknown action" in reply["error"]["message"]
 
-    await client.send_json_auto_id({"type": "walker_scout/options"})
+    await client.send_json_auto_id({"type": "snipe_hunt/options"})
     reply = await client.receive_json()
     while reply["type"] == "event":
         reply = await client.receive_json()
@@ -149,7 +149,7 @@ async def test_dashboard_websocket(hass, entry, bot, hass_ws_client):
 
 
 async def test_bot_going_away_makes_entities_unavailable(hass, entry, bot):
-    bot.error = WalkerScoutError("down")
+    bot.error = SnipeHuntError("down")
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
     assert state(hass, entry, "sensor", "status").state == "unavailable"

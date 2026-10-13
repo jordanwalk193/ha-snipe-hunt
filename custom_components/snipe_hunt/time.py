@@ -1,4 +1,4 @@
-"""Quiet-hours times for Walker Scout."""
+"""Quiet-hours times for Snipe Hunt."""
 from __future__ import annotations
 
 from datetime import time
@@ -8,19 +8,19 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutSettingEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntSettingEntity
 
 TIMES = ("quiet_start", "quiet_end")
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(WalkerScoutTime(entry.runtime_data, key) for key in TIMES)
+    async_add_entities(SnipeHuntTime(entry.runtime_data, key) for key in TIMES)
 
 
-class WalkerScoutTime(WalkerScoutSettingEntity, TimeEntity):
+class SnipeHuntTime(SnipeHuntSettingEntity, TimeEntity):
     """When phone alerts go quiet and when they start again (bot's time zone)."""
 
     _attr_entity_category = EntityCategory.CONFIG

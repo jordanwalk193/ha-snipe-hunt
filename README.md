@@ -1,25 +1,23 @@
-# Walker Scout for Home Assistant
+# Snipe Hunt for Home Assistant
 
 A Home Assistant integration for [**Snipe Hunt**](https://github.com/jordanwalk193/snipe-hunt), a self-hosted bot that hunts eBay for underpriced cards of the player you collect. The bot runs on its own machine; this integration shows what it knows, lets you steer it, and ships the dashboard.
 
-It is named after the first player the bot was built for (Jordan Walker of the St. Louis Cardinals) and works with a Snipe Hunt bot set up for any player.
-
-Walker Scout only recommends. Nothing in this integration can bid, buy, make an offer or change a Gixen snipe, because the bot has no way to do any of those.
+Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an offer or change a Gixen snipe, because the bot has no way to do any of those.
 
 ## What you get
 
-- **Entities** on one "Walker Scout Bot" device: live picks, what needs a snipe, the top pick, Gixen snipes and the next one to end, win rate, collection size and spend, budget left, what's waiting to be paid or filed, and bot health.
+- **Entities** on one "Snipe Hunt" device: live picks, what needs a snipe, the top pick, Gixen snipes and the next one to end, win rate, collection size and spend, budget left, what's waiting to be paid or filed, and bot health.
 - **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, alert rules, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
 - **A dashboard**: one card type with fifteen panels, and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
-- **Automation hooks**: a "New pick" event entity (and the raw `walker_scout_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
+- **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
 ## Install
 
-1. In HACS, open the menu, choose **Custom repositories**, add `https://github.com/jordanwalk193/ha-walker-scout` as an **Integration**, then download **Walker Scout**.
+1. In HACS, open the menu, choose **Custom repositories**, add `https://github.com/jordanwalk193/ha-snipe-hunt` as an **Integration**, then download **Snipe Hunt**.
 2. Restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration → Walker Scout**. Enter the bot's address (for example `http://192.0.2.10:8766`) and the `API_TOKEN` from the bot's env file.
+3. Go to **Settings → Devices & services → Add integration → Snipe Hunt**. Enter the bot's address (for example `http://192.0.2.10:8766`) and the `API_TOKEN` from the bot's env file.
 
 ## Dashboard
 
@@ -27,14 +25,14 @@ Create a dashboard (**Settings → Dashboards → Add dashboard → New dashboar
 
 ```yaml
 strategy:
-  type: custom:walker-scout
+  type: custom:snipe-hunt
 ```
 
-The tabs, their order, the accent colour and how many picks show before "Show all" are set under **Settings → Devices & services → Walker Scout → Configure**. To override the tabs for one dashboard:
+The tabs, their order, the accent colour and how many picks show before "Show all" are set under **Settings → Devices & services → Snipe Hunt → Configure**. To override the tabs for one dashboard:
 
 ```yaml
 strategy:
-  type: custom:walker-scout
+  type: custom:snipe-hunt
   title: Cards
   tabs: [today, picks, collection]
 ```
@@ -44,7 +42,7 @@ strategy:
 Any panel can go on any dashboard:
 
 ```yaml
-type: custom:walker-scout-card
+type: custom:snipe-hunt-card
 panel: need_snipe
 title: Snipe these      # optional
 accent: "#c41e3a"       # optional
@@ -77,7 +75,7 @@ accent: "#c41e3a"       # optional
 ```yaml
 triggers:
   - trigger: event
-    event_type: walker_scout_new_pick
+    event_type: snipe_hunt_new_pick
     event_data:
       tier: fire
 actions:
@@ -93,7 +91,7 @@ Or get told when a good auction is about to end with no snipe on it:
 ```yaml
 triggers:
   - trigger: state
-    entity_id: binary_sensor.walker_scout_bot_unsniped_auction_ending_soon
+    entity_id: binary_sensor.snipe_hunt_unsniped_auction_ending_soon
     to: "on"
 actions:
   - action: notify.mobile_app_your_phone
@@ -106,7 +104,7 @@ actions:
 
 The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`.
 
-Services: `walker_scout.search_now`, `refresh`, `skip_pick` (`item_id`), `restore_skipped`, `mark_filed` (`ids`), `gixen_refresh` (`login`), `send_test_alert`.
+Services: `snipe_hunt.search_now`, `refresh`, `skip_pick` (`item_id`), `restore_skipped`, `mark_filed` (`ids`), `gixen_refresh` (`login`), `send_test_alert`.
 
 ## The bot's API
 
@@ -115,6 +113,10 @@ Services: `walker_scout.search_now`, `refresh`, `skip_pick` (`item_id`), `restor
 - `GET /api/snapshot`: one JSON object with `api: 1`, `status`, `picks`, `gixen`, `cards`, `collection`, `pipeline`, `record`, `wantlist`, `settings` and `last_action`.
 - `POST /api/action`: `{"action": "...", ...}`; answers `{"ok", "message", "snapshot"}`.
 - `POST /api/settings`: `{"setting": value, ...}`; same answer.
+
+## License
+
+MIT. See `LICENSE`.
 
 ## Development
 

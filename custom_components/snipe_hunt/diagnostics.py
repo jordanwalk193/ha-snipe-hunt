@@ -1,4 +1,4 @@
-"""Diagnostics for Walker Scout: sizes and health, not the collection itself."""
+"""Diagnostics for Snipe Hunt: sizes and health, not the collection itself."""
 from __future__ import annotations
 
 from typing import Any
@@ -6,11 +6,11 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 
 from .const import CONF_URL
-from .coordinator import WalkerScoutConfigEntry
+from .coordinator import SnipeHuntConfigEntry
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry
 ) -> dict[str, Any]:
     data = entry.runtime_data.data
     return {

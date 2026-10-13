@@ -1,7 +1,7 @@
-"""Constants for the Walker Scout integration."""
+"""Constants for the Snipe Hunt integration."""
 from __future__ import annotations
 
-DOMAIN = "walker_scout"
+DOMAIN = "snipe_hunt"
 API_VERSION = 1
 
 CONF_URL = "url"
@@ -27,5 +27,5 @@ DEFAULT_OPTIONS = {
     OPT_SOON_MINUTES: 30,
 }
 
-EVENT_NEW_PICK = "walker_scout_new_pick"
-FRONTEND_URL = "/walker_scout/walker-scout.js"
+EVENT_NEW_PICK = "snipe_hunt_new_pick"
+FRONTEND_URL = "/snipe_hunt/snipe-hunt.js"

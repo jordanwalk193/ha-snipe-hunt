@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Walker Scout",
-        "description": "Walker Scout runs on its own machine. Enter where its API listens and its token.",
+        "title": "Connect to Snipe Hunt",
+        "description": "Snipe Hunt runs on its own machine. Enter where its API listens and its token.",
         "data": {
           "url": "Bot address",
           "token": "API token"
@@ -14,7 +14,7 @@
         }
       },
       "reconfigure": {
-        "title": "Walker Scout moved",
+        "title": "Snipe Hunt moved",
         "data": {
           "url": "Bot address",
           "token": "API token"
@@ -25,7 +25,7 @@
         }
       },
       "reauth_confirm": {
-        "title": "Walker Scout token",
+        "title": "Snipe Hunt token",
         "description": "The bot stopped accepting the saved token. Enter the current one.",
         "data": {
           "token": "API token"
@@ -38,7 +38,7 @@
       "unsupported": "The bot and this integration are on different API versions. Update whichever is older."
     },
     "abort": {
-      "single_instance_allowed": "Walker Scout is already set up.",
+      "single_instance_allowed": "Snipe Hunt is already set up.",
       "reconfigure_successful": "Saved.",
       "reauth_successful": "Token saved."
     }
@@ -46,7 +46,7 @@
   "options": {
     "step": {
       "init": {
-        "title": "Walker Scout options",
+        "title": "Snipe Hunt options",
         "data": {
           "scan_interval": "Check the bot every",
           "tabs": "Dashboard tabs",
@@ -57,8 +57,8 @@
           "ending_soon_minutes": "\"Ending soon\" means within"
         },
         "data_description": {
-          "tabs": "Which tabs the Walker Scout dashboard strategy builds, in this order.",
-          "event_tiers": "A walker_scout_new_pick event fires for each new pick in these tiers, for your own automations.",
+          "tabs": "Which tabs the Snipe Hunt dashboard strategy builds, in this order.",
+          "event_tiers": "A snipe_hunt_new_pick event fires for each new pick in these tiers, for your own automations.",
           "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Bot tab links to the latest one.",
           "ending_soon_minutes": "The \"Unsniped auction ending soon\" sensor turns on when a good auction with no snipe ends within this many minutes."
         }

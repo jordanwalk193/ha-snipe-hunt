@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.walker_scout.const import CONF_TOKEN, CONF_URL, DOMAIN
+from custom_components.snipe_hunt.const import CONF_TOKEN, CONF_URL, DOMAIN
 
 PICK = {
     "item_id": "111111111111", "card": "2023 Topps Chrome Refractor /99", "tier": "fire",
@@ -90,15 +90,15 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 def bot():
     fake = FakeBot()
     with (
-        patch("custom_components.walker_scout.coordinator.WalkerScoutClient", fake),
-        patch("custom_components.walker_scout.config_flow.WalkerScoutClient", fake),
+        patch("custom_components.snipe_hunt.coordinator.SnipeHuntClient", fake),
+        patch("custom_components.snipe_hunt.config_flow.SnipeHuntClient", fake),
     ):
         yield fake
 
 
 @pytest.fixture
 async def entry(hass, bot):
-    entry = MockConfigEntry(domain=DOMAIN, title="Walker Scout",
+    entry = MockConfigEntry(domain=DOMAIN, title="Snipe Hunt",
                             data={CONF_URL: "http://bot.test:8766", CONF_TOKEN: "t"})
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

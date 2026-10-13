@@ -1,36 +1,36 @@
-"""Base entity for Walker Scout."""
+"""Base entity for Snipe Hunt."""
 from __future__ import annotations
 
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import WalkerScoutCoordinator
+from .coordinator import SnipeHuntCoordinator
 
 
-class WalkerScoutEntity(CoordinatorEntity[WalkerScoutCoordinator]):
+class SnipeHuntEntity(CoordinatorEntity[SnipeHuntCoordinator]):
     """An entity fed by the bot's snapshot."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: WalkerScoutCoordinator, key: str) -> None:
+    def __init__(self, coordinator: SnipeHuntCoordinator, key: str) -> None:
         super().__init__(coordinator)
         entry = coordinator.config_entry
         self._attr_translation_key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name="Walker Scout Bot",
-            manufacturer="Walker Scout",
+            name="Snipe Hunt",
+            manufacturer="Snipe Hunt",
             model="Card steal-finder bot",
             entry_type=DeviceEntryType.SERVICE,
         )
 
 
-class WalkerScoutSettingEntity(WalkerScoutEntity):
+class SnipeHuntSettingEntity(SnipeHuntEntity):
     """An entity that shows and changes one of the bot's settings."""
 
-    def __init__(self, coordinator: WalkerScoutCoordinator, key: str) -> None:
+    def __init__(self, coordinator: SnipeHuntCoordinator, key: str) -> None:
         super().__init__(coordinator, key)
         self._setting = key
 

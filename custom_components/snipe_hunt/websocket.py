@@ -10,11 +10,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import OPT_ACCENT, OPT_PICKS_PER_PAGE, OPT_REPORT_URL, OPT_TABS
-from .coordinator import WalkerScoutCoordinator, options
+from .coordinator import SnipeHuntCoordinator, options
 from .helpers import get_coordinator
 
 
-def _card_options(coordinator: WalkerScoutCoordinator) -> dict[str, Any]:
+def _card_options(coordinator: SnipeHuntCoordinator) -> dict[str, Any]:
     """The integration options the cards and the dashboard strategy care about."""
     opts = options(coordinator.config_entry)
     red, green, blue = (int(v) for v in opts[OPT_ACCENT])
@@ -33,7 +33,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_action)
 
 
-@websocket_api.websocket_command({vol.Required("type"): "walker_scout/subscribe"})
+@websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/subscribe"})
 @callback
 def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """Send the snapshot now and again every time it changes."""
@@ -56,7 +56,7 @@ def ws_subscribe(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     forward()
 
 
-@websocket_api.websocket_command({vol.Required("type"): "walker_scout/options"})
+@websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/options"})
 @callback
 def ws_options(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     """The dashboard options, for the strategy that lays the dashboard out."""
@@ -67,7 +67,7 @@ def ws_options(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
 
 
 @websocket_api.websocket_command({
-    vol.Required("type"): "walker_scout/action",
+    vol.Required("type"): "snipe_hunt/action",
     vol.Required("action"): str,
     vol.Optional("data", default=dict): dict,
 })

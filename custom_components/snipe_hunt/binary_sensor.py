@@ -1,4 +1,4 @@
-"""Binary sensors for Walker Scout."""
+"""Binary sensors for Snipe Hunt."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -17,12 +17,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .const import OPT_SOON_MINUTES
-from .coordinator import WalkerScoutConfigEntry, options
-from .entity import WalkerScoutEntity
+from .coordinator import SnipeHuntConfigEntry, options
+from .entity import SnipeHuntEntity
 
 
 @dataclass(frozen=True, kw_only=True)
-class WalkerScoutBinarySensor(BinarySensorEntityDescription):
+class SnipeHuntBinarySensor(BinarySensorEntityDescription):
     """A binary sensor and where its value comes from in the snapshot."""
 
     value: Callable[[dict[str, Any]], bool | None]
@@ -33,19 +33,19 @@ def _over_budget(data: dict[str, Any]) -> bool | None:
     return data["collection"]["month_spent"] > budget if budget else None
 
 
-BINARY_SENSORS: tuple[WalkerScoutBinarySensor, ...] = (
-    WalkerScoutBinarySensor(key="searching", device_class=BinarySensorDeviceClass.RUNNING,
+BINARY_SENSORS: tuple[SnipeHuntBinarySensor, ...] = (
+    SnipeHuntBinarySensor(key="searching", device_class=BinarySensorDeviceClass.RUNNING,
                             value=lambda d: d["status"]["searching"]),
-    WalkerScoutBinarySensor(key="problem", device_class=BinarySensorDeviceClass.PROBLEM,
+    SnipeHuntBinarySensor(key="problem", device_class=BinarySensorDeviceClass.PROBLEM,
                             entity_category=EntityCategory.DIAGNOSTIC,
                             value=lambda d: d["status"]["state"] != "ok"),
-    WalkerScoutBinarySensor(
+    SnipeHuntBinarySensor(
         key="gixen_connected", device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
         value=lambda d: None if d.get("gixen") is None
         else bool(d["gixen"]["available"] and not d["gixen"]["problem"]),
     ),
-    WalkerScoutBinarySensor(key="over_budget", device_class=BinarySensorDeviceClass.PROBLEM,
+    SnipeHuntBinarySensor(key="over_budget", device_class=BinarySensorDeviceClass.PROBLEM,
                             value=_over_budget),
 )
 
@@ -63,15 +63,15 @@ def ending_soon(data: dict[str, Any], minutes: int) -> list[dict[str, Any]]:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     async_add_entities([
-        *(WalkerScoutBinarySensorEntity(entry.runtime_data, d) for d in BINARY_SENSORS),
-        WalkerScoutEndingSoon(entry.runtime_data, "unsniped_ending_soon"),
+        *(SnipeHuntBinarySensorEntity(entry.runtime_data, d) for d in BINARY_SENSORS),
+        SnipeHuntEndingSoon(entry.runtime_data, "unsniped_ending_soon"),
     ])
 
 
-class WalkerScoutEndingSoon(WalkerScoutEntity, BinarySensorEntity):
+class SnipeHuntEndingSoon(SnipeHuntEntity, BinarySensorEntity):
     """On while a good auction with no snipe is about to end. Made for automations."""
 
     def _soon(self) -> list[dict[str, Any]]:
@@ -93,12 +93,12 @@ class WalkerScoutEndingSoon(WalkerScoutEntity, BinarySensorEntity):
         }
 
 
-class WalkerScoutBinarySensorEntity(WalkerScoutEntity, BinarySensorEntity):
+class SnipeHuntBinarySensorEntity(SnipeHuntEntity, BinarySensorEntity):
     """A yes/no fact from the bot's snapshot."""
 
-    entity_description: WalkerScoutBinarySensor
+    entity_description: SnipeHuntBinarySensor
 
-    def __init__(self, coordinator, description: WalkerScoutBinarySensor) -> None:
+    def __init__(self, coordinator, description: SnipeHuntBinarySensor) -> None:
         super().__init__(coordinator, description.key)
         self.entity_description = description
 

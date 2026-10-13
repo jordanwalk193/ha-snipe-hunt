@@ -1,4 +1,4 @@
-"""Client for the Walker Scout bot's local API."""
+"""Client for the Snipe Hunt bot's local API."""
 from __future__ import annotations
 
 import asyncio
@@ -11,15 +11,15 @@ from .const import API_VERSION
 TIMEOUT = aiohttp.ClientTimeout(total=45)   # filing cards waits on a git pull
 
 
-class WalkerScoutError(Exception):
+class SnipeHuntError(Exception):
     """The bot could not be reached or answered with an error."""
 
 
-class WalkerScoutAuthError(WalkerScoutError):
+class SnipeHuntAuthError(SnipeHuntError):
     """The bot rejected the token."""
 
 
-class WalkerScoutClient:
+class SnipeHuntClient:
     """Talks to src/api.py on the machine the bot runs on."""
 
     def __init__(self, session: aiohttp.ClientSession, url: str, token: str) -> None:
@@ -34,17 +34,17 @@ class WalkerScoutClient:
                 timeout=TIMEOUT,
             ) as resp:
                 if resp.status == 401:
-                    raise WalkerScoutAuthError("The bot rejected the token")
+                    raise SnipeHuntAuthError("The bot rejected the token")
                 data = await resp.json(content_type=None)
                 if resp.status >= 400:
                     message = data.get("message") if isinstance(data, dict) else None
-                    raise WalkerScoutError(message or f"The bot answered {resp.status}")
+                    raise SnipeHuntError(message or f"The bot answered {resp.status}")
         except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            raise WalkerScoutError(f"Can't reach the bot: {err or type(err).__name__}") from err
+            raise SnipeHuntError(f"Can't reach the bot: {err or type(err).__name__}") from err
         except ValueError as err:
-            raise WalkerScoutError("The bot's answer wasn't JSON") from err
+            raise SnipeHuntError("The bot's answer wasn't JSON") from err
         if not isinstance(data, dict):
-            raise WalkerScoutError("The bot's answer wasn't an object")
+            raise SnipeHuntError("The bot's answer wasn't an object")
         return data
 
     async def async_snapshot(self) -> dict[str, Any]:
@@ -63,7 +63,7 @@ class WalkerScoutClient:
 def check_snapshot(data: dict[str, Any]) -> dict[str, Any]:
     """Make sure the bot speaks the version of the API this integration knows."""
     if data.get("api") != API_VERSION or "status" not in data:
-        raise WalkerScoutError(
+        raise SnipeHuntError(
             f"The bot speaks API version {data.get('api')!r}; this integration "
             f"needs version {API_VERSION}. Update whichever is older."
         )

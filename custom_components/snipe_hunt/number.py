@@ -1,4 +1,4 @@
-"""Number settings for Walker Scout."""
+"""Number settings for Snipe Hunt."""
 from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription, NumberMode
@@ -6,8 +6,8 @@ from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutSettingEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntSettingEntity
 
 NUMBERS: tuple[NumberEntityDescription, ...] = (
     NumberEntityDescription(key="monthly_budget", native_min_value=0, native_max_value=5000,
@@ -25,12 +25,12 @@ NUMBERS: tuple[NumberEntityDescription, ...] = (
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(WalkerScoutNumber(entry.runtime_data, d) for d in NUMBERS)
+    async_add_entities(SnipeHuntNumber(entry.runtime_data, d) for d in NUMBERS)
 
 
-class WalkerScoutNumber(WalkerScoutSettingEntity, NumberEntity):
+class SnipeHuntNumber(SnipeHuntSettingEntity, NumberEntity):
     """A number the bot uses when alerting or building the dashboard."""
 
     _attr_entity_category = EntityCategory.CONFIG

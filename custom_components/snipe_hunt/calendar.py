@@ -9,8 +9,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntEntity
 
 LENGTH = timedelta(minutes=5)   # an ending is a moment; show it as its last minutes
 
@@ -46,12 +46,12 @@ def _events(data: dict[str, Any]) -> list[CalendarEvent]:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([WalkerScoutCalendar(entry.runtime_data, "auctions")])
+    async_add_entities([SnipeHuntCalendar(entry.runtime_data, "auctions")])
 
 
-class WalkerScoutCalendar(WalkerScoutEntity, CalendarEntity):
+class SnipeHuntCalendar(SnipeHuntEntity, CalendarEntity):
     """Auction endings worth knowing about."""
 
     @property

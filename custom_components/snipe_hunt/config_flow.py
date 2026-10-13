@@ -1,4 +1,4 @@
-"""Set up Walker Scout from the UI, and change how it looks and polls."""
+"""Set up Snipe Hunt from the UI, and change how it looks and polls."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -21,7 +21,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .api import WalkerScoutAuthError, WalkerScoutClient, WalkerScoutError
+from .api import SnipeHuntAuthError, SnipeHuntClient, SnipeHuntError
 from .const import (
     CONF_TOKEN,
     CONF_URL,
@@ -62,19 +62,19 @@ def _clean_url(url: str) -> str:
     return url if "://" in url else f"http://{url}"
 
 
-class WalkerScoutConfigFlow(ConfigFlow, domain=DOMAIN):
+class SnipeHuntConfigFlow(ConfigFlow, domain=DOMAIN):
     """Ask where the bot is and check that it answers."""
 
     VERSION = 1
 
     async def _async_check(self, url: str, token: str) -> str | None:
         """Return an error key, or None if the bot answered with a snapshot."""
-        client = WalkerScoutClient(async_get_clientsession(self.hass), url, token)
+        client = SnipeHuntClient(async_get_clientsession(self.hass), url, token)
         try:
             await client.async_snapshot()
-        except WalkerScoutAuthError:
+        except SnipeHuntAuthError:
             return "invalid_auth"
-        except WalkerScoutError as err:
+        except SnipeHuntError as err:
             return "unsupported" if "API version" in str(err) else "cannot_connect"
         return None
 
@@ -91,7 +91,7 @@ class WalkerScoutConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_TOKEN: user_input[CONF_TOKEN].strip()}
             error = await self._async_check(data[CONF_URL], data[CONF_TOKEN])
             if error is None:
-                return self.async_create_entry(title="Walker Scout", data=data)
+                return self.async_create_entry(title="Snipe Hunt", data=data)
             errors["base"] = error
         return self.async_show_form(
             step_id="user", data_schema=self._schema(user_input or {}), errors=errors
@@ -140,11 +140,11 @@ class WalkerScoutConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> WalkerScoutOptionsFlow:
-        return WalkerScoutOptionsFlow()
+    def async_get_options_flow(config_entry: ConfigEntry) -> SnipeHuntOptionsFlow:
+        return SnipeHuntOptionsFlow()
 
 
-class WalkerScoutOptionsFlow(OptionsFlow):
+class SnipeHuntOptionsFlow(OptionsFlow):
     """How often to poll, and how the dashboard looks."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

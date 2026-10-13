@@ -1,4 +1,4 @@
-"""List settings for Walker Scout, edited as comma-separated text."""
+"""List settings for Snipe Hunt, edited as comma-separated text."""
 from __future__ import annotations
 
 from homeassistant.components.text import TextEntity
@@ -6,19 +6,19 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutSettingEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntSettingEntity
 
 TEXTS = ("sellers", "extra_searches")
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(WalkerScoutText(entry.runtime_data, key) for key in TEXTS)
+    async_add_entities(SnipeHuntText(entry.runtime_data, key) for key in TEXTS)
 
 
-class WalkerScoutText(WalkerScoutSettingEntity, TextEntity):
+class SnipeHuntText(SnipeHuntSettingEntity, TextEntity):
     """A list the bot searches eBay with: watched sellers or extra search terms."""
 
     _attr_entity_category = EntityCategory.CONFIG

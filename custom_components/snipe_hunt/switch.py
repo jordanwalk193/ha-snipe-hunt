@@ -1,4 +1,4 @@
-"""On/off settings for Walker Scout."""
+"""On/off settings for Snipe Hunt."""
 from __future__ import annotations
 
 from typing import Any
@@ -8,20 +8,20 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutSettingEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntSettingEntity
 
 SWITCHES = ("alerts_enabled", "alert_fire", "alert_green", "alert_cheap_yellow",
             "quiet_hours", "gixen_enabled")
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(WalkerScoutSwitch(entry.runtime_data, key) for key in SWITCHES)
+    async_add_entities(SnipeHuntSwitch(entry.runtime_data, key) for key in SWITCHES)
 
 
-class WalkerScoutSwitch(WalkerScoutSettingEntity, SwitchEntity):
+class SnipeHuntSwitch(SnipeHuntSettingEntity, SwitchEntity):
     """Turns one of the bot's behaviours on or off."""
 
     _attr_entity_category = EntityCategory.CONFIG

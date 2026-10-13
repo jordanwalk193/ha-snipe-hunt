@@ -6,17 +6,17 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import EVENT_NEW_PICK, TIERS
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntEntity
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities([WalkerScoutNewPick(entry.runtime_data, "new_pick")])
+    async_add_entities([SnipeHuntNewPick(entry.runtime_data, "new_pick")])
 
 
-class WalkerScoutNewPick(WalkerScoutEntity, EventEntity):
+class SnipeHuntNewPick(SnipeHuntEntity, EventEntity):
     """Fires with the pick's tier as the event type and the pick as its attributes."""
 
     _attr_event_types = TIERS

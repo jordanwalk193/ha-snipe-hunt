@@ -1,14 +1,14 @@
 {
-  "domain": "walker_scout",
-  "name": "Walker Scout",
+  "domain": "snipe_hunt",
+  "name": "Snipe Hunt",
   "codeowners": ["@jordanwalk193"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "websocket_api"],
-  "documentation": "https://github.com/jordanwalk193/ha-walker-scout",
+  "documentation": "https://github.com/jordanwalk193/ha-snipe-hunt",
   "integration_type": "service",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/jordanwalk193/ha-walker-scout/issues",
+  "issue_tracker": "https://github.com/jordanwalk193/ha-snipe-hunt/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "1.1.1"
+  "version": "2.0.0"
 }

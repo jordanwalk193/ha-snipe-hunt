@@ -1,4 +1,4 @@
-"""Walker Scout: a card steal-finder bot, shown and steered from Home Assistant.
+"""Snipe Hunt: a card steal-finder bot, shown and steered from Home Assistant.
 
 The bot runs on its own machine and serves a small local API. This integration
 polls it, turns what it knows into entities, exposes its settings and buttons,
@@ -18,7 +18,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
 from .const import DOMAIN, FRONTEND_URL
-from .coordinator import WalkerScoutConfigEntry, WalkerScoutCoordinator
+from .coordinator import SnipeHuntConfigEntry, SnipeHuntCoordinator
 from .services import async_setup_services
 from .websocket import async_setup_websocket
 
@@ -41,7 +41,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     integration = await async_get_integration(hass, DOMAIN)
     await hass.http.async_register_static_paths([
         StaticPathConfig(
-            FRONTEND_URL, str(Path(__file__).parent / "frontend" / "walker-scout.js"), False
+            FRONTEND_URL, str(Path(__file__).parent / "frontend" / "snipe-hunt.js"), False
         )
     ])
     # The version in the URL makes browsers fetch the new cards after an update.
@@ -51,8 +51,8 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: WalkerScoutConfigEntry) -> bool:
-    coordinator = WalkerScoutCoordinator(hass, entry)
+async def async_setup_entry(hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> bool:
+    coordinator = SnipeHuntCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -60,9 +60,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: WalkerScoutConfigEntry) 
     return True
 
 
-async def _async_options_changed(hass: HomeAssistant, entry: WalkerScoutConfigEntry) -> None:
+async def _async_options_changed(hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: WalkerScoutConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> bool:
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

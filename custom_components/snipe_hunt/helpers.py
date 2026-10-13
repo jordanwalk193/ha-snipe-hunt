@@ -1,4 +1,4 @@
-"""Find the running Walker Scout coordinator."""
+"""Find the running Snipe Hunt coordinator."""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntryState
@@ -6,12 +6,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN
-from .coordinator import WalkerScoutCoordinator
+from .coordinator import SnipeHuntCoordinator
 
 
-def get_coordinator(hass: HomeAssistant) -> WalkerScoutCoordinator:
+def get_coordinator(hass: HomeAssistant) -> SnipeHuntCoordinator:
     """The one coordinator, or an error a person can act on."""
     for entry in hass.config_entries.async_entries(DOMAIN):
         if entry.state is ConfigEntryState.LOADED:
             return entry.runtime_data
-    raise HomeAssistantError("Walker Scout isn't set up, or can't reach the bot right now")
+    raise HomeAssistantError("Snipe Hunt isn't set up, or can't reach the bot right now")

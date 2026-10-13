@@ -1,4 +1,4 @@
-"""Sensors for Walker Scout."""
+"""Sensors for Snipe Hunt."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -17,8 +17,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .coordinator import WalkerScoutConfigEntry
-from .entity import WalkerScoutEntity
+from .coordinator import SnipeHuntConfigEntry
+from .entity import SnipeHuntEntity
 
 Data = dict[str, Any]
 MEASUREMENT = SensorStateClass.MEASUREMENT
@@ -26,7 +26,7 @@ DIAGNOSTIC = EntityCategory.DIAGNOSTIC
 
 
 @dataclass(frozen=True, kw_only=True)
-class WalkerScoutSensor(SensorEntityDescription):
+class SnipeHuntSensor(SensorEntityDescription):
     """A sensor and where its value comes from in the snapshot."""
 
     value: Callable[[Data], Any]
@@ -65,83 +65,83 @@ def _pick(*keys: str) -> Callable[[Data], Data]:
     return lambda d: {k: d.get(k) for k in keys}
 
 
-SENSORS: tuple[WalkerScoutSensor, ...] = (
-    WalkerScoutSensor(
+SENSORS: tuple[SnipeHuntSensor, ...] = (
+    SnipeHuntSensor(
         key="status", device_class=SensorDeviceClass.ENUM,
         options=["ok", "stale", "failing"],
         value=lambda d: d["status"]["state"],
         attrs=lambda d: _pick("failing", "last_ok_job", "last_report")(d["status"]),
     ),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="live_picks", state_class=MEASUREMENT,
         value=lambda d: d["status"]["live_picks"],
         attrs=lambda d: _pick("fire", "green", "yellow", "sales_based", "skipped")(d["status"]),
     ),
-    WalkerScoutSensor(key="auction_picks", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="auction_picks", state_class=MEASUREMENT,
                       value=lambda d: d["status"]["auctions"]),
-    WalkerScoutSensor(key="buy_now_picks", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="buy_now_picks", state_class=MEASUREMENT,
                       value=lambda d: d["status"]["buy_now"]),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="need_snipe", state_class=MEASUREMENT,
         value=lambda d: len(d["status"]["need_snipe"]),
         attrs=lambda d: {"item_ids": d["status"]["need_snipe"],
                          "within_hours": d["settings"].get("need_snipe_hours")},
     ),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="top_pick",
         value=lambda d: (_top_pick(d).get("card") or "")[:255] or None,
         attrs=lambda d: _pick("item_id", "tier", "price", "shipping", "total", "max",
                               "max_basis", "end_time", "seller", "url", "snipe")(_top_pick(d)),
     ),
-    WalkerScoutSensor(key="listings", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="listings", state_class=MEASUREMENT,
                       value=lambda d: d["status"]["listings"]),
-    WalkerScoutSensor(key="new_listings", state_class=MEASUREMENT, entity_category=DIAGNOSTIC,
+    SnipeHuntSensor(key="new_listings", state_class=MEASUREMENT, entity_category=DIAGNOSTIC,
                       value=lambda d: d["status"]["new_24h"]),
-    WalkerScoutSensor(key="alerts_sent", state_class=MEASUREMENT, entity_category=DIAGNOSTIC,
+    SnipeHuntSensor(key="alerts_sent", state_class=MEASUREMENT, entity_category=DIAGNOSTIC,
                       value=lambda d: d["status"]["alerts_24h"],
                       attrs=lambda d: {"held_overnight": d["status"]["held_overnight"]}),
-    WalkerScoutSensor(key="last_search", device_class=SensorDeviceClass.TIMESTAMP,
+    SnipeHuntSensor(key="last_search", device_class=SensorDeviceClass.TIMESTAMP,
                       entity_category=DIAGNOSTIC,
                       value=lambda d: _when(d["status"]["last_search"])),
-    WalkerScoutSensor(key="last_good_run", device_class=SensorDeviceClass.TIMESTAMP,
+    SnipeHuntSensor(key="last_good_run", device_class=SensorDeviceClass.TIMESTAMP,
                       entity_category=DIAGNOSTIC,
                       value=lambda d: _when(d["status"]["last_ok"]),
                       attrs=lambda d: {"job": d["status"]["last_ok_job"]}),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="last_action", entity_category=DIAGNOSTIC,
         value=lambda d: ((d.get("last_action") or {}).get("message") or "")[:255] or None,
         attrs=lambda d: _pick("ok", "action", "at")(d.get("last_action") or {}),
     ),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="gixen_snipes", state_class=MEASUREMENT,
         value=lambda d: len(_gixen(d)["snipes"]) if _gixen(d) else None,
         attrs=lambda d: _pick("problem", "read_at")(d.get("gixen") or {}),
     ),
-    WalkerScoutSensor(key="gixen_over_max", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="gixen_over_max", state_class=MEASUREMENT,
                       value=lambda d: _gixen(d).get("outbid_count")),
-    WalkerScoutSensor(key="gixen_committed", device_class=SensorDeviceClass.MONETARY,
+    SnipeHuntSensor(key="gixen_committed", device_class=SensorDeviceClass.MONETARY,
                       native_unit_of_measurement="USD", suggested_display_precision=2,
                       value=lambda d: _gixen(d).get("committed")),
-    WalkerScoutSensor(key="next_snipe", device_class=SensorDeviceClass.TIMESTAMP,
+    SnipeHuntSensor(key="next_snipe", device_class=SensorDeviceClass.TIMESTAMP,
                       value=_next_snipe),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="win_rate", native_unit_of_measurement=PERCENTAGE, state_class=MEASUREMENT,
         value=lambda d: d["record"]["rate"],
         attrs=lambda d: _pick("days", "wins", "losses", "gixen_wins", "gixen_losses",
                               "wins_week", "losses_week")(d["record"]),
     ),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="collection", state_class=MEASUREMENT,
         value=lambda d: d["collection"]["cards"],
         attrs=lambda d: _pick("rookies", "autos", "relics", "numbered", "graded",
                               "front_page", "dupes", "avg_paid", "by_status",
                               "by_year")(d["collection"]),
     ),
-    WalkerScoutSensor(key="collection_spent", device_class=SensorDeviceClass.MONETARY,
+    SnipeHuntSensor(key="collection_spent", device_class=SensorDeviceClass.MONETARY,
                       state_class=SensorStateClass.TOTAL,
                       native_unit_of_measurement="USD", suggested_display_precision=2,
                       value=lambda d: d["collection"]["spent"]),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="month_spend", device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         native_unit_of_measurement="USD", suggested_display_precision=2,
@@ -149,36 +149,36 @@ SENSORS: tuple[WalkerScoutSensor, ...] = (
         attrs=lambda d: {"month": d["collection"]["month"],
                          "cards": d["collection"]["month_cards"]},
     ),
-    WalkerScoutSensor(key="budget_left", device_class=SensorDeviceClass.MONETARY,
+    SnipeHuntSensor(key="budget_left", device_class=SensorDeviceClass.MONETARY,
                       native_unit_of_measurement="USD", suggested_display_precision=2,
                       value=_budget_left),
-    WalkerScoutSensor(
+    SnipeHuntSensor(
         key="to_pay", device_class=SensorDeviceClass.MONETARY,
         native_unit_of_measurement="USD", suggested_display_precision=2,
         value=lambda d: d["pipeline"]["unpaid_total"],
         attrs=lambda d: {"cards": d["pipeline"]["unpaid_cards"],
                          "sellers": [g["seller"] for g in d["pipeline"]["unpaid"]]},
     ),
-    WalkerScoutSensor(key="in_transit", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="in_transit", state_class=MEASUREMENT,
                       value=lambda d: d["pipeline"]["in_transit"]),
-    WalkerScoutSensor(key="to_file", state_class=MEASUREMENT,
+    SnipeHuntSensor(key="to_file", state_class=MEASUREMENT,
                       value=lambda d: d["pipeline"]["to_file"]),
-    WalkerScoutSensor(key="want_list", value=lambda d: len(d["wantlist"])),
+    SnipeHuntSensor(key="want_list", value=lambda d: len(d["wantlist"])),
 )
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
+    hass: HomeAssistant, entry: SnipeHuntConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(WalkerScoutSensorEntity(entry.runtime_data, d) for d in SENSORS)
+    async_add_entities(SnipeHuntSensorEntity(entry.runtime_data, d) for d in SENSORS)
 
 
-class WalkerScoutSensorEntity(WalkerScoutEntity, SensorEntity):
+class SnipeHuntSensorEntity(SnipeHuntEntity, SensorEntity):
     """One number or fact from the bot's snapshot."""
 
-    entity_description: WalkerScoutSensor
+    entity_description: SnipeHuntSensor
 
-    def __init__(self, coordinator, description: WalkerScoutSensor) -> None:
+    def __init__(self, coordinator, description: SnipeHuntSensor) -> None:
         super().__init__(coordinator, description.key)
         self.entity_description = description
 

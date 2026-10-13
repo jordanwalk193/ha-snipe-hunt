@@ -11,7 +11,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import WalkerScoutAuthError, WalkerScoutClient, WalkerScoutError
+from .api import SnipeHuntAuthError, SnipeHuntClient, SnipeHuntError
 from .const import (
     CONF_TOKEN,
     CONF_URL,
@@ -24,7 +24,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-type WalkerScoutConfigEntry = ConfigEntry[WalkerScoutCoordinator]
+type SnipeHuntConfigEntry = ConfigEntry[SnipeHuntCoordinator]
 
 
 def options(entry: ConfigEntry) -> dict[str, Any]:
@@ -32,12 +32,12 @@ def options(entry: ConfigEntry) -> dict[str, Any]:
     return {**DEFAULT_OPTIONS, **entry.options}
 
 
-class WalkerScoutCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class SnipeHuntCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """One snapshot of the bot, refreshed on a timer and after every action."""
 
-    config_entry: WalkerScoutConfigEntry
+    config_entry: SnipeHuntConfigEntry
 
-    def __init__(self, hass: HomeAssistant, entry: WalkerScoutConfigEntry) -> None:
+    def __init__(self, hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -45,7 +45,7 @@ class WalkerScoutCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=DOMAIN,
             update_interval=timedelta(seconds=options(entry)[OPT_SCAN_INTERVAL]),
         )
-        self.client = WalkerScoutClient(
+        self.client = SnipeHuntClient(
             async_get_clientsession(hass), entry.data[CONF_URL], entry.data[CONF_TOKEN]
         )
         self._known_picks: set[str] | None = None
@@ -53,9 +53,9 @@ class WalkerScoutCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             data = await self.client.async_snapshot()
-        except WalkerScoutAuthError as err:
+        except SnipeHuntAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
-        except WalkerScoutError as err:
+        except SnipeHuntError as err:
             raise UpdateFailed(str(err)) from err
         self._announce_new_picks(data)
         return data
@@ -76,7 +76,7 @@ class WalkerScoutCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_send(self, call, payload: dict[str, Any]) -> str:
         try:
             result = await call(payload)
-        except WalkerScoutError as err:
+        except SnipeHuntError as err:
             raise HomeAssistantError(str(err)) from err
         if isinstance(result.get("snapshot"), dict):
             self._announce_new_picks(result["snapshot"])
