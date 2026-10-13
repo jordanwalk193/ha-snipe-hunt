@@ -24,7 +24,7 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 - **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, which tiers alert, the minimum deal rating worth an alert, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
-- **A dashboard**: one card type with fifteen panels, and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
+- **A dashboard**: one card type with sixteen panels (including a Top 10 deals ranking, best steal first), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
 - **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
@@ -68,6 +68,7 @@ accent: "#c41e3a"       # optional
 | Panel | Shows |
 |---|---|
 | `summary` | The four numbers that matter today, plus Search and Refresh |
+| `top_deals` | The ten best steals, ranked: most deal stars, then brag tier, then dollars under the going rate (`count:` changes the ten) |
 | `top_pick` | The best pick you haven't sniped yet |
 | `need_snipe` | Good auctions ending soon with no snipe |
 | `snipes_today` | Your Gixen snipes ending in the next 24 hours |

@@ -132,6 +132,9 @@
       },
       "alert_min_stars": {
         "default": "mdi:star-half-full"
+      },
+      "price_lookups": {
+        "default": "mdi:cash-search"
       }
     },
     "switch": {

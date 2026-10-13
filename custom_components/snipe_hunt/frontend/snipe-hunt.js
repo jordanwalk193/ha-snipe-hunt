@@ -87,6 +87,16 @@ const deal = p => {
   return `<span class="deal" title="How far under its going rate you would pay, shipping included"><span style="color:${color};letter-spacing:1px">${'★'.repeat(p.deal)}<span style="opacity:.3">${'★'.repeat(5 - p.deal)}</span></span> ${text}</span>`;
 };
 const room = p => p.max == null ? -999 : Number(p.max) - Number(p.bid_now ?? p.price);
+// Dollars under the going rate you would pay, shipping included: the asking
+// price for Buy It Now, the bot's max for an auction (the same sum the stars use).
+const saved = p => p.value == null ? 0 : Number(p.value) - (Number(p.is_auction ? p.max : p.price) + Number(p.shipping ?? 5));
+// Steals first: most deal stars, then the brag tier, then the most dollars saved.
+// Left out: picks with no rating, ones under 10% below value (one star), and
+// auctions already bid past the bot's max.
+const TIER_RANK = {fire: 0, green: 1, yellow: 2};
+const steals = picks => picks
+  .filter(p => p.deal >= 2 && !(p.is_auction && p.max != null && Number(p.bid_now ?? p.price) > Number(p.max)))
+  .sort((x, y) => y.deal - x.deal || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x));
 
 // What every panel gets: the snapshot plus a few views of it.
 const context = (card) => {
@@ -134,20 +144,21 @@ const pickButtons = p => `<div class="row tight">
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
 </div>`;
-const pickRow = p => {
+const pickRow = p => pickLine(p, '', '');
+const pickLine = (p, lead, extra) => {
   const t = TIER[p.tier] || ['•', '#546e7a'];
   const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})</span>`;
   const now = p.bid_now != null && Number(p.bid_now) !== Number(p.price) ? ` · <b>now ${money(p.bid_now)}</b>` : '';
   const ends = p.is_auction && p.end_time ? ` · ends ${when(p.end_time)}` : '';
   return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
-    ${thumb(p, 54, 74)}
+    ${lead}${thumb(p, 54, 74)}
     <div style="flex:1;min-width:0">
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start">
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${t[0]} ${esc(p.card)}</a>
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       <div style="font-size:13px;margin-top:3px">${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
-      ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}</div>` : ''}
+      ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
@@ -216,6 +227,15 @@ const PANELS = {
         <div class="muted" style="font-size:12px;margin-top:4px">${esc(p.seller)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
       </div></div>`;
+  }],
+
+  top_deals: ['Top 10 deals', true, c => {
+    const top = steals(c.picks).slice(0, Number(c.card.config.count) || 10);
+    if (!top.length) return empty('No live pick is 10% or more under its going rate right now.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Best steal first: most deal stars, then 🔥 before 🟢 before 🟡, then the most dollars under the going rate.</div>` +
+      top.map((p, i) => pickLine(p,
+        `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
+        saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
   }],
 
   need_snipe: ['Needs a snipe', true, c => {
@@ -430,6 +450,8 @@ const STYLE = `
   a { color: var(--primary-color); }
   .muted { color: var(--secondary-text-color); }
   .deal { color: var(--secondary-text-color); white-space: nowrap; }
+  .rank { flex: none; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; text-align: center; font-size: 12px;
+          font-weight: 800; margin: 2px -4px 0 0; background: var(--divider-color); }
   .empty { padding: 8px 0; }
   .line { border-top: 1px solid var(--divider-color); }
   .line > b { flex: none; }
@@ -631,6 +653,7 @@ class SnipeHuntStrategy {
     const VIEWS = {
       today: {title: 'Today', path: 'today', icon: 'mdi:calendar-star', sections: [
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
+        section(heading('Top 10 deals', 'mdi:podium-gold'), panel('top_deals')),
         section(heading('Needs a snipe', 'mdi:target-account', id('sensor', 'need_snipe')), panel('need_snipe')),
         section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),
           heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay')),
@@ -660,7 +683,7 @@ class SnipeHuntStrategy {
         section(heading('Settings', 'mdi:tune'), {
           type: 'entities', grid_options: {columns: 'full'},
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
-            ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
+            ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['number', 'price_lookups'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
             ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches']]
             .map(([domain, key]) => id(domain, key))

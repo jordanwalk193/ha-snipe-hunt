@@ -227,6 +227,9 @@
       },
       "alert_min_stars": {
         "name": "Minimum deal stars to alert"
+      },
+      "price_lookups": {
+        "name": "Sold-price lookups per run"
       }
     },
     "switch": {
