@@ -14,6 +14,8 @@ NUMBERS: tuple[NumberEntityDescription, ...] = (
                             native_step=5, native_unit_of_measurement="USD"),
     NumberEntityDescription(key="yellow_max_total", native_min_value=0, native_max_value=25,
                             native_step=0.25, native_unit_of_measurement="USD"),
+    NumberEntityDescription(key="alert_min_stars", native_min_value=1, native_max_value=5,
+                            native_step=1),
     NumberEntityDescription(key="urgent_hours", native_min_value=0, native_max_value=24,
                             native_step=0.5, native_unit_of_measurement=UnitOfTime.HOURS),
     NumberEntityDescription(key="need_snipe_hours", native_min_value=1, native_max_value=168,

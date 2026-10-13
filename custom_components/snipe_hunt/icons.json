@@ -75,6 +75,12 @@
       },
       "want_list": {
         "default": "mdi:puzzle"
+      },
+      "claude_cost_today": {
+        "default": "mdi:robot-happy-outline"
+      },
+      "claude_cost_month": {
+        "default": "mdi:robot-happy-outline"
       }
     },
     "binary_sensor": {
@@ -123,6 +129,9 @@
       },
       "gixen_relogin_minutes": {
         "default": "mdi:account-clock-outline"
+      },
+      "alert_min_stars": {
+        "default": "mdi:star-half-full"
       }
     },
     "switch": {

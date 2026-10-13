@@ -52,6 +52,8 @@ async def test_entities_reflect_the_snapshot(hass, entry):
     assert state(hass, entry, "sensor", "next_snipe").state.startswith("2099-01-03T02:00")
     assert state(hass, entry, "sensor", "budget_left").state == "98.0"
     assert state(hass, entry, "sensor", "win_rate").state == "50"
+    assert state(hass, entry, "sensor", "claude_cost_month").state == "11.37"
+    assert state(hass, entry, "sensor", "claude_cost_today").attributes["calls"] == 19
     assert state(hass, entry, "binary_sensor", "problem").state == "off"
     assert state(hass, entry, "binary_sensor", "over_budget").state == "off"
     assert state(hass, entry, "binary_sensor", "gixen_connected").state == "on"

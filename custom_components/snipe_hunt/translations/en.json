@@ -164,6 +164,12 @@
       },
       "want_list": {
         "name": "Want list targets"
+      },
+      "claude_cost_today": {
+        "name": "Claude cost today"
+      },
+      "claude_cost_month": {
+        "name": "Claude cost this month"
       }
     },
     "binary_sensor": {
@@ -218,6 +224,9 @@
       },
       "gixen_relogin_minutes": {
         "name": "Gixen sign-back-in wait"
+      },
+      "alert_min_stars": {
+        "name": "Minimum deal stars to alert"
       }
     },
     "switch": {

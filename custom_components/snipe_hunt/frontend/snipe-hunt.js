@@ -180,7 +180,7 @@ const PANELS = {
     const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
     const last = c.d.last_action || {};
     const fresh = last.at && Date.now() - new Date(last.at) < 10 * 60e3;
-    return `<div style="padding-top:10px">` + grid(4, [
+    return `<div style="padding-top:10px">` + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -416,6 +416,7 @@ const PANELS = {
     <div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5">
       ${c.s.alerts_enabled === false ? '🔕 Phone alerts are paused.<br>' : ''}
       ${a.sales_based} of ${a.live_picks} live maxes come from real sold prices; the rest are estimates.<br>
+      ${a.cost_month != null ? 'Claude: ' + money(a.cost_today) + ' today (' + (a.calls_today || 0) + ' calls), ' + money(a.cost_month) + ' this month.<br>' : ''}
       ${a.held_overnight ? a.held_overnight + ' alerts held for the morning.<br>' : ''}
       ${a.skipped ? a.skipped + ' picks hidden with Skip.<br>' : ''}
       ${last.at ? 'Last button: ' + esc(last.message) + ' (' + ago(last.at) + ')<br>' : ''}
@@ -659,7 +660,7 @@ class SnipeHuntStrategy {
         section(heading('Settings', 'mdi:tune'), {
           type: 'entities', grid_options: {columns: 'full'},
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
-            ['number', 'yellow_max_total'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
+            ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
             ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches']]
             .map(([domain, key]) => id(domain, key))

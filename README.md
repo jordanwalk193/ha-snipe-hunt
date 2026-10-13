@@ -1,14 +1,29 @@
+<p align="center"><img src="docs/logo.png" width="120" alt="Snipe Hunt logo"></p>
+
 # Snipe Hunt for Home Assistant
+
+[![HACS: custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A Home Assistant integration for [**Snipe Hunt**](https://github.com/jordanwalk193/snipe-hunt), a self-hosted bot that hunts eBay for underpriced cards of the player you collect. The bot runs on its own machine; this integration shows what it knows, lets you steer it, and ships the dashboard.
 
 Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an offer or change a Gixen snipe, because the bot has no way to do any of those.
 
+![The Today tab: what needs a snipe, the top pick, your snipes ending today and what to pay](docs/today.png)
+
+<p>
+<img src="docs/picks.png" width="62%" alt="Every live pick with filters and deal ratings">
+<img src="docs/phone.png" width="24%" alt="The dashboard on a phone">
+</p>
+
+<sub>Screenshots show the bot's built-in demo data. Every card, price and seller in them is made up.</sub>
+
 ## What you get
 
 - **Entities** on one "Snipe Hunt" device: live picks, what needs a snipe, the top pick, Gixen snipes and the next one to end, win rate, collection size and spend, budget left, what's waiting to be paid or filed, and bot health.
-- **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, alert rules, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
+- **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, which tiers alert, the minimum deal rating worth an alert, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
+- **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
 - **A dashboard**: one card type with fifteen panels, and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
 - **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
@@ -17,7 +32,9 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 
 1. In HACS, open the menu, choose **Custom repositories**, add `https://github.com/jordanwalk193/ha-snipe-hunt` as an **Integration**, then download **Snipe Hunt**.
 2. Restart Home Assistant.
-3. Go to **Settings → Devices & services → Add integration → Snipe Hunt**. Enter the bot's address (for example `http://192.0.2.10:8766`) and the `API_TOKEN` from the bot's env file.
+3. Go to **Settings → Devices & services → Add integration → Snipe Hunt**. No bot yet? Start one in [demo mode](https://github.com/jordanwalk193/snipe-hunt#try-it-in-two-minutes) to look around first.
+
+   Then, with a real bot: Enter the bot's address (for example `http://192.0.2.10:8766`) and the `API_TOKEN` from the bot's env file.
 
 ## Dashboard
 
