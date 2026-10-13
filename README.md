@@ -10,7 +10,7 @@ A Home Assistant integration for [**Snipe Hunt**](https://github.com/jordanwalk1
 
 Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an offer or change a Gixen snipe, because the bot has no way to do any of those.
 
-![The Today tab: what needs a snipe, the top pick, your snipes ending today and what to pay](docs/today.png)
+![A tour of the dashboard: Today, Picks, Sold prices and Collection, shown with demo data](docs/tour.gif)
 
 <p>
 <img src="docs/picks.png" width="62%" alt="Every live pick with filters and deal ratings">
