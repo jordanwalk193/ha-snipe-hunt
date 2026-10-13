@@ -149,7 +149,7 @@ const pickRow = p => {
       <div style="font-size:13px;margin-top:3px">${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
-      <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · ${esc(p.item_id)}</div>
+      <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
     </div></div>`;
 };
@@ -213,6 +213,7 @@ const PANELS = {
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span></div>`}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
+        <div class="muted" style="font-size:12px;margin-top:4px">${esc(p.seller)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
       </div></div>`;
   }],
@@ -551,6 +552,14 @@ class SnipeHuntCard extends HTMLElement {
   }
 
   clicked(ev) {
+    // Open links the way Home Assistant's own "url" action does. A plain
+    // target=_blank link does nothing in some of the phone apps' web views.
+    const link = ev.target.closest('a[href]');
+    if (link && !ev.defaultPrevented && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+      ev.preventDefault();
+      window.open(link.href, '_blank', 'noopener');
+      return;
+    }
     const el = ev.target.closest('[data-do]');
     if (!el) return;
     ev.preventDefault();
