@@ -3,6 +3,7 @@
 # Snipe Hunt for Home Assistant
 
 [![HACS: custom](https://img.shields.io/badge/HACS-custom-41BDF5.svg)](https://hacs.xyz)
+[![Validate](https://github.com/jordanwalk193/ha-snipe-hunt/actions/workflows/validate.yml/badge.svg)](https://github.com/jordanwalk193/ha-snipe-hunt/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A Home Assistant integration for [**Snipe Hunt**](https://github.com/jordanwalk193/snipe-hunt), a self-hosted bot that hunts eBay for underpriced cards of the player you collect. The bot runs on its own machine; this integration shows what it knows, lets you steer it, and ships the dashboard.
