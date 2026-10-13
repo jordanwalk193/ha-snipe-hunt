@@ -145,10 +145,22 @@ const thumb = (p, w, h) => {
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
-    ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
+    ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
 </div>`;
+// The second number next to the max: a bid at about the going rate, for a card
+// you would rather win than steal. Only the bot's newer versions send it.
+const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
+const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
+const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
+// A small line chart of prices, oldest first.
+const spark = (values, color) => {
+  if (!values || values.length < 2) return '';
+  const lo = Math.min(...values), hi = Math.max(...values), w = 96, h = 28;
+  const pts = values.map((v, i) => [(i / (values.length - 1) * (w - 6) + 3).toFixed(1), (h - 4 - (hi === lo ? 0.5 : (v - lo) / (hi - lo)) * (h - 8)).toFixed(1)]);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="flex:none"><polyline fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p => p.join(',')).join(' ')}"/><circle cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1]}" r="3" fill="${color}"/></svg>`;
+};
 const pickRow = p => pickLine(p, '', '');
 const pickLine = (p, lead, extra) => {
   const t = TIER[p.tier] || ['•', '#546e7a'];
@@ -162,9 +174,10 @@ const pickLine = (p, lead, extra) => {
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${t[0]} ${esc(p.card)}</a>
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
-      <div style="font-size:13px;margin-top:3px">${edge(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
+      <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
+      ${lastSold(p)}
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
     </div></div>`;
@@ -230,8 +243,9 @@ const PANELS = {
       <div style="flex:1;min-width:0">
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
-        <div style="font-size:15px">${edge(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
-        ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span></div>`}
+        <div style="font-size:15px">${edge(p)}${fastTag(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
+        ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
+        ${lastSold(p)}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
         <div class="muted" style="font-size:12px;margin-top:4px">${esc(p.seller)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
@@ -254,7 +268,8 @@ const PANELS = {
     if (!all) return empty('Update the bot to see this: it needs a version that ranks print runs.');
     const top = all.filter(r => !(r.is_auction && r.end_time && msLeft(r.end_time) <= 0)).slice(0, Number(c.card.config.count) || 10);
     if (!top.length) return empty('No serial-numbered card is listed right now. This fills in at the next search.');
-    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">The fewest copies in existence that you could buy today, autographs first among equals. Not a price opinion: these are rare, not necessarily steals.</div>` +
+    const n = c.d.rarest_census, fresh = r => r.first_seen && Date.now() / 1000 - r.first_seen < 24 * 3600;
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">The fewest copies in existence that you could buy today, autographs first among equals. Not a price opinion: these are rare, not necessarily steals.${n && n.one_of_one != null ? `<br>For sale right now: <b style="color:var(--primary-text-color)">${n.one_of_one}</b> one-of-ones, <b style="color:var(--primary-text-color)">${n.to_10}</b> more numbered to 10 or fewer, <b style="color:var(--primary-text-color)">${n.to_50}</b> to 50 or fewer.` : ''}</div>` +
       top.map((r, i) => {
         const run = r.run === 1 ? '1 of 1' : 'one of ' + r.run;
         const color = r.run === 1 ? '#c9a227' : (r.run <= 10 ? '#e53935' : (r.run <= 50 ? '#fb8c00' : '#546e7a'));
@@ -265,9 +280,45 @@ const PANELS = {
               <a class="title" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a>
               <div style="text-align:right;flex:none">${badge(r)}</div>
             </div>
-            <div style="font-size:13px;margin-top:3px">${pill(run, color)}${r.auto ? ' ' + pill('✍️ Auto', '#5e35b1') : ''}${r.graded ? ' ' + pill('Graded', '#546e7a') : ''} <b>${money(r.price)}</b> + ${shipTxt(r)}${r.is_auction && r.bids ? ' · ' + r.bids + (r.bids === 1 ? ' bid' : ' bids') : ''}</div>
+            <div style="font-size:13px;margin-top:3px">${pill(run, color)}${r.auto ? ' ' + pill('✍️ Auto', '#5e35b1') : ''}${r.graded ? ' ' + pill('Graded', '#546e7a') : ''}${fresh(r) ? ' ' + pill('🆕 New today', '#00838f') : ''}${r.owned ? ' ' + pill('✓ You own one', '#2e7d32') : ''} <b>${money(r.price)}</b> + ${shipTxt(r)}${r.is_auction && r.bids ? ' · ' + r.bids + (r.bids === 1 ? ' bid' : ' bids') : ''}</div>
             <div class="muted" style="font-size:11px;margin-top:3px">${esc(r.seller)}${r.is_auction && r.end_time ? ' · ends ' + when(r.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(r.item_id)}</b></div>
           </div></div>`;
+      }).join('');
+  }],
+
+  moves: ['Price drops and relists', false, c => {
+    const all = c.d.moves;
+    if (!all) return empty('Update the bot to see this: it needs a version that watches prices.');
+    const top = all.filter(m => !(m.is_auction && m.end_time && msLeft(m.end_time) <= 0)).slice(0, Number(c.card.config.count) || 8);
+    if (!top.length) return empty('No seller has cut a price or relisted an unsold card in the last three days.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Sellers who blinked: a Buy It Now cut by 15% or more, or a card that ended unsold and came back. A good moment for an offer.</div>` +
+      top.map(m => `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
+        ${thumb(m, 54, 74)}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start">
+            <a class="title" href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.title)}</a>
+            <div style="text-align:right;flex:none">${badge(m)}</div>
+          </div>
+          <div style="font-size:13px;margin-top:3px">${m.kind === 'relist' ? pill('🔁 Relisted', '#5e35b1') : pill('📉 Price cut', '#c62828')} ${m.old && m.old !== m.price ? `<s class="muted">${money(m.old)}</s> → ` : ''}<b>${money(m.price)}</b> + ${shipTxt(m)}${m.cut_pct > 0 ? ` <b style="color:#43a047">−${m.cut_pct}%</b>` : ''}</div>
+          <div class="muted" style="font-size:11px;margin-top:3px">${esc(m.seller)} · ${ago(new Date(m.at * 1000).toISOString())} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(m.item_id)}</b></div>
+        </div></div>`).join('');
+  }],
+
+  history: ['Price history', false, c => {
+    const m = c.d.market;
+    if (!m || !m.history) return empty('Update the bot to see this: it needs a version that groups sold prices by card.');
+    if (!m.history.length) return empty('No card has sold twice yet. Once one has, its prices line up here.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Cards the bot has seen sell more than once, delivered prices, oldest to newest.</div>` +
+      m.history.slice(0, Number(c.card.config.count) || 8).map(h => {
+        const up = h.prices[h.prices.length - 1] - h.prices[0], color = up > 0 ? '#e53935' : (up < 0 ? '#43a047' : '#78909c');
+        return `<div data-row class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0">
+          ${thumb(h, 40, 54)}
+          <div style="flex:1;min-width:0">
+            <a class="title" href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.title)}</a>
+            <div style="font-size:12px;margin-top:3px"><b>${h.n} sales</b> <span class="muted">· ${money(h.low)} to ${money(h.high)} · typical ${money(h.typical)} · last ${money(h.last)} ${ago(h.last_at)}</span></div>
+          </div>
+          <div style="text-align:right;flex:none">${spark(h.prices, color)}<div style="font-size:11px;color:${color};font-weight:700">${up === 0 ? 'flat' : (up > 0 ? '▲ ' : '▼ ') + money(Math.abs(up))}</div></div>
+        </div>`;
       }).join('');
   }],
 
@@ -336,7 +387,7 @@ const PANELS = {
     ]) + (m.calls ? `<div class="bar" style="margin-top:12px"><div style="width:${w}%;background:#43a047"></div><div style="flex:1;background:#78909c"></div></div>` : '') +
     `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">
       ${m.count} real auction results on record, ${m.count_7d} from the last 7 days. New picks are priced from these.<br>
-      ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.` : 'None of the picked auctions has sold yet.'}
+      ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.${m.under_win == null ? '' : ` A snipe at the "to win" bid would have been in the running on ${m.under_win} of the ${m.calls}.`}` : 'None of the picked auctions has sold yet.'}
       ${m.value_gap_pct == null ? '' : `<br>The going rate the bot gave was typically ${m.value_gap_pct}% away from the real delivered price.`}</div></div>`;
   }],
 
@@ -747,6 +798,8 @@ class SnipeHuntStrategy {
       picks: {title: 'Picks', path: 'picks', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Every live pick', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('all_picks')), column_span: 2},
         section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
+        section(heading('Price drops and relists', 'mdi:trending-down'), panel('moves')),
+        section(heading('Price history', 'mdi:chart-line'), panel('history')),
       ]},
       gixen: {title: 'Gixen', path: 'gixen', icon: 'mdi:target', sections: [
         section(heading('Scheduled snipes', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),
