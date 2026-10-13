@@ -526,7 +526,7 @@ class WalkerScoutCard extends HTMLElement {
     let shown = 0;
     this.body.querySelectorAll('[data-find]').forEach(row => {
       const hit = !q || row.dataset.find.includes(q);
-      row.style.display = hit ? '' : 'none';
+      row.style.display = hit ? 'flex' : 'none';
       shown += hit;
     });
     const found = this.body.querySelector('[data-found]');
@@ -638,7 +638,10 @@ class WalkerScoutStrategy {
             ['number', 'yellow_max_total'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
             ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches']]
-            .map(([domain, key]) => id(domain, key)).filter(Boolean),
+            .map(([domain, key]) => id(domain, key))
+            // A setting the bot doesn't expose is unavailable; leave it off the list.
+            .filter(e => e && hass.states[e] && hass.states[e].state !== 'unavailable')
+            .map(e => ({entity: e, name: String(hass.states[e].attributes.friendly_name || e).replace(/^Walker Scout Bot /, '')})),
         }),
       ]},
     };
