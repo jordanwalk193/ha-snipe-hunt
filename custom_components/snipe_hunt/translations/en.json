@@ -141,6 +141,12 @@
       "win_rate": {
         "name": "Win rate"
       },
+      "sold_prices": {
+        "name": "Sold prices on record"
+      },
+      "calls_under_max": {
+        "name": "Picks that sold under the max"
+      },
       "collection": {
         "name": "Collection"
       },

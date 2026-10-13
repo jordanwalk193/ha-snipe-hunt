@@ -52,6 +52,12 @@
       "win_rate": {
         "default": "mdi:trophy"
       },
+      "sold_prices": {
+        "default": "mdi:gavel"
+      },
+      "calls_under_max": {
+        "default": "mdi:bullseye-arrow"
+      },
       "collection": {
         "default": "mdi:cards"
       },

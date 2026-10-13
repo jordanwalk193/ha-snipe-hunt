@@ -61,6 +61,16 @@ def _budget_left(data: Data) -> float | None:
     return round(budget - data["collection"]["month_spent"], 2) if budget else None
 
 
+def _market(data: Data) -> Data:
+    """The sold-price scorecard; empty with a bot too old to keep one."""
+    return data.get("market") or {}
+
+
+def _under_max(data: Data) -> int | None:
+    market = _market(data)
+    return round(100 * market["under_max"] / market["calls"]) if market.get("calls") else None
+
+
 def _pick(*keys: str) -> Callable[[Data], Data]:
     return lambda d: {k: d.get(k) for k in keys}
 
@@ -139,6 +149,17 @@ SENSORS: tuple[SnipeHuntSensor, ...] = (
         value=lambda d: d["record"]["rate"],
         attrs=lambda d: _pick("days", "wins", "losses", "gixen_wins", "gixen_losses",
                               "wins_week", "losses_week")(d["record"]),
+    ),
+    SnipeHuntSensor(
+        key="sold_prices", state_class=MEASUREMENT,
+        value=lambda d: _market(d).get("count"),
+        attrs=lambda d: {"last_7_days": _market(d).get("count_7d")},
+    ),
+    SnipeHuntSensor(
+        key="calls_under_max", native_unit_of_measurement=PERCENTAGE, state_class=MEASUREMENT,
+        value=_under_max,
+        attrs=lambda d: _pick("calls", "under_max", "over_max", "value_gap_pct",
+                              "value_bias_pct")(_market(d)),
     ),
     SnipeHuntSensor(
         key="collection", state_class=MEASUREMENT,

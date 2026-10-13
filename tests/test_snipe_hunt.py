@@ -41,6 +41,20 @@ async def test_user_flow_checks_the_bot_before_saving(hass, bot):
     assert result["data"] == {CONF_URL: "http://bot.test:8766", CONF_TOKEN: "t"}
 
 
+async def test_scorecard_sensors_wait_for_a_bot_that_keeps_sold_prices(hass, entry, bot):
+    assert state(hass, entry, "sensor", "sold_prices").state == "unknown"
+    assert state(hass, entry, "sensor", "calls_under_max").state == "unknown"
+    bot.snapshot["market"] = {"count": 40, "count_7d": 12, "calls": 8, "under_max": 6,
+                              "over_max": 2, "value_gap_pct": 14, "value_bias_pct": 6,
+                              "sold": []}
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    sold = state(hass, entry, "sensor", "sold_prices")
+    assert sold.state == "40" and sold.attributes["last_7_days"] == 12
+    under = state(hass, entry, "sensor", "calls_under_max")
+    assert under.state == "75" and under.attributes["over_max"] == 2
+
+
 async def test_entities_reflect_the_snapshot(hass, entry):
     assert entry.state is ConfigEntryState.LOADED
     assert state(hass, entry, "sensor", "status").state == "ok"
