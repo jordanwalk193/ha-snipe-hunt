@@ -287,6 +287,53 @@ const PANELS = {
         : (limit === 'all' && picks.length > c.perPage ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'limit', 'page')}</div>` : '')) + `</div>`;
   }],
 
+  calls: ['How the calls turned out', false, c => {
+    const m = c.d.market;
+    if (!m) return empty('Update the bot to see this: it needs a version that records sold prices.');
+    if (!m.count) return empty('No sold prices yet. The bot records the final bid of every auction it has watched, starting with the next ones to close.');
+    const w = m.calls ? Math.round(m.under_max / m.calls * 100) : 0;
+    return `<div style="padding-top:10px">` + grid(3, [
+      stat('SOLD PRICES', m.count, '#1e88e5', '🔨'),
+      stat('UNDER THE MAX', m.calls ? m.under_max + ' / ' + m.calls : '–', '#43a047', '🎯'),
+      stat('PRICE GAP', m.value_gap_pct == null ? '–' : m.value_gap_pct + '%', '#8e24aa', '📏'),
+    ]) + (m.calls ? `<div class="bar" style="margin-top:12px"><div style="width:${w}%;background:#43a047"></div><div style="flex:1;background:#78909c"></div></div>` : '') +
+    `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">
+      ${m.count} real auction results on record, ${m.count_7d} from the last 7 days. New picks are priced from these.<br>
+      ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.` : 'None of the picked auctions has sold yet.'}
+      ${m.value_gap_pct == null ? '' : `<br>The going rate the bot gave was typically ${m.value_gap_pct}% away from the real delivered price.`}</div></div>`;
+  }],
+
+  sold: ['Sold prices', false, c => {
+    const m = c.d.market;
+    if (!m) return empty('Update the bot to see this: it needs a version that records sold prices.');
+    const only = store('sold_only', 'all'), limit = store('sold_limit', 'page');
+    let sold = (m.sold || []).slice();
+    if (only === 'picked') sold = sold.filter(x => x.call);
+    const shown = limit === 'all' ? sold : sold.slice(0, 8);
+    const row = x => {
+      const k = x.call, t = k ? (TIER[k.tier] || ['•', '#546e7a']) : null;
+      const verdict = !k ? '' : (k.under_max
+        ? pill('🎯 under max ' + cents(k.max), '#43a047')
+        : pill('went past max ' + cents(k.max), '#78909c'));
+      return `<div class="line" style="display:flex;gap:12px;align-items:flex-start;padding:9px 0">
+        ${thumb({url: x.url, image: x.image, tier: k && k.tier}, 44, 60)}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start">
+            <a class="title" href="${esc(x.url)}" target="_blank" rel="noopener" style="font-size:13px">${t ? t[0] + ' ' : ''}${esc(x.title)}</a>
+            <div style="text-align:right;flex:none"><b style="font-size:15px">${money(x.price)}</b></div>
+          </div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${shipTxt(x)} · ${x.bids || 0} bid${x.bids === 1 ? '' : 's'} · sold ${ago(x.sold_at)}</div>
+          ${k ? `<div style="font-size:12px;margin-top:4px">${verdict}${k.value ? ` <span class="muted" style="white-space:nowrap">rated ${worth(k.value)} · went ${money(x.total)} delivered</span>` : ''}</div>` : ''}
+        </div></div>`;
+    };
+    return `<div style="padding-top:6px">` +
+      chips('sold_only', 'all', [['all', 'Every sale'], ['picked', 'Ones the bot picked']]) +
+      `<div class="muted" style="font-size:12px;margin:10px 0 2px">Final bids of auctions the bot watched, newest first. ${m.count} on record.</div>` +
+      (shown.length ? shown.map(row).join('') : empty(only === 'picked' ? 'None of the picked auctions has sold yet.' : 'Nothing has sold yet.')) +
+      (sold.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + sold.length, 'sold_limit', 'all', '#546e7a')}</div>`
+        : (limit === 'all' && sold.length > 8 ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'sold_limit', 'page')}</div>` : '')) + `</div>`;
+  }],
+
   wantlist: ['Want list', false, c => {
     const targets = c.d.wantlist || [];
     if (!targets.length) return empty("The want list is empty.");
@@ -654,13 +701,14 @@ class SnipeHuntStrategy {
       today: {title: 'Today', path: 'today', icon: 'mdi:calendar-star', sections: [
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         section(heading('Top 10 deals', 'mdi:podium-gold'), panel('top_deals')),
+        section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
         section(heading('Needs a snipe', 'mdi:target-account', id('sensor', 'need_snipe')), panel('need_snipe')),
         section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),
           heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay')),
       ]},
       picks: {title: 'Picks', path: 'picks', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Every live pick', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('all_picks')), column_span: 2},
-        section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
+        section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
       gixen: {title: 'Gixen', path: 'gixen', icon: 'mdi:target', sections: [
         section(heading('Scheduled snipes', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),

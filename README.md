@@ -15,6 +15,8 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 <p>
 <img src="docs/picks.png" width="62%" alt="Every live pick with filters and deal ratings">
 <img src="docs/phone.png" width="24%" alt="The dashboard on a phone">
+
+![Sold prices the bot recorded itself, and how its picks turned out against them](docs/sold.png)
 </p>
 
 <sub>Screenshots show the bot's built-in demo data. Every card, price and seller in them is made up.</sub>
@@ -25,7 +27,7 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 - **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, which tiers alert, the minimum deal rating worth an alert, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
-- **A dashboard**: one card type with sixteen panels (including a Top 10 deals ranking, best steal first), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
+- **A dashboard**: one card type with eighteen panels (including a Top 10 deals ranking, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
 - **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
@@ -70,6 +72,8 @@ accent: "#c41e3a"       # optional
 |---|---|
 | `summary` | The four numbers that matter today, plus Search and Refresh |
 | `top_deals` | The ten best steals, ranked: most deal stars, then brag tier, then dollars under the going rate (`count:` changes the ten) |
+| `calls` | Scorecard: sold prices on record, how many picked auctions closed at or under the bot's max, and how far its going rate was from the real price |
+| `sold` | Final bids of the auctions the bot watched, newest first, with the bot's call on the ones it picked |
 | `top_pick` | The best pick you haven't sniped yet |
 | `need_snipe` | Good auctions ending soon with no snipe |
 | `snipes_today` | Your Gixen snipes ending in the next 24 hours |
