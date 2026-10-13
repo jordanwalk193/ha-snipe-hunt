@@ -248,6 +248,29 @@ const PANELS = {
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
   }],
 
+  rarest: ['Rarest on eBay', false, c => {
+    // Lowest print run first, read from the listing titles at the last search.
+    const all = c.d.rarest;
+    if (!all) return empty('Update the bot to see this: it needs a version that ranks print runs.');
+    const top = all.filter(r => !(r.is_auction && r.end_time && msLeft(r.end_time) <= 0)).slice(0, Number(c.card.config.count) || 10);
+    if (!top.length) return empty('No serial-numbered card is listed right now. This fills in at the next search.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">The fewest copies in existence that you could buy today, autographs first among equals. Not a price opinion: these are rare, not necessarily steals.</div>` +
+      top.map((r, i) => {
+        const run = r.run === 1 ? '1 of 1' : 'one of ' + r.run;
+        const color = r.run === 1 ? '#c9a227' : (r.run <= 10 ? '#e53935' : (r.run <= 50 ? '#fb8c00' : '#546e7a'));
+        return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
+          <div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>${thumb(r, 54, 74)}
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start">
+              <a class="title" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a>
+              <div style="text-align:right;flex:none">${badge(r)}</div>
+            </div>
+            <div style="font-size:13px;margin-top:3px">${pill(run, color)}${r.auto ? ' ' + pill('✍️ Auto', '#5e35b1') : ''}${r.graded ? ' ' + pill('Graded', '#546e7a') : ''} <b>${money(r.price)}</b> + ${shipTxt(r)}${r.is_auction && r.bids ? ' · ' + r.bids + (r.bids === 1 ? ' bid' : ' bids') : ''}</div>
+            <div class="muted" style="font-size:11px;margin-top:3px">${esc(r.seller)}${r.is_auction && r.end_time ? ' · ends ' + when(r.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(r.item_id)}</b></div>
+          </div></div>`;
+      }).join('');
+  }],
+
   need_snipe: ['Needs a snipe', true, c => {
     const head = c.gixenOn ? '' : `<div class="muted" style="font-size:12px;padding-top:10px">Gixen can't be read right now, so this shows every 🔥/🟢 auction ending within ${span(c.hours)}.</div>`;
     if (!c.need.length) return head + empty(`✅ Every 🔥/🟢 auction ending in the next ${span(c.hours)} has a snipe.`);
@@ -715,6 +738,7 @@ class SnipeHuntStrategy {
       today: {title: 'Today', path: 'today', icon: 'mdi:calendar-star', sections: [
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         section(heading('Top 10 deals', 'mdi:podium-gold'), panel('top_deals')),
+        section(heading('Rarest on eBay', 'mdi:diamond-stone'), panel('rarest')),
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
         section(heading('Needs a snipe', 'mdi:target-account', id('sensor', 'need_snipe')), panel('need_snipe')),
         section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),

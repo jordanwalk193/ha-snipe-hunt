@@ -29,7 +29,7 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
 - **Slipped-through labels**: picks the bot calls a price mistake, a hidden listing or a sleeper auction carry a badge, rank first among equal deals, and have their own filter on the Picks tab.
 - **Scorecard sensors**: how many sold prices the bot has on record, and what share of its picks went on to sell at or under its max, ready for a graph or an automation.
-- **A dashboard**: one card type with eighteen panels (including a Top 10 deals ranking, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
+- **A dashboard**: one card type with nineteen panels (including a Top 10 deals ranking, the ten rarest cards for sale right now, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
 - **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
@@ -74,6 +74,7 @@ accent: "#c41e3a"       # optional
 |---|---|
 | `summary` | The four numbers that matter today, plus Search and Refresh |
 | `top_deals` | The ten best steals, ranked: most deal stars, then brag tier, then dollars under the going rate (`count:` changes the ten) |
+| `rarest` | The ten lowest print runs for sale right now (1/1s, then /5, /10…), read from the listing titles (`count:` changes the ten) |
 | `calls` | Scorecard: sold prices on record, how many picked auctions closed at or under the bot's max, and how far its going rate was from the real price |
 | `sold` | Final bids of the auctions the bot watched, newest first, with the bot's call on the ones it picked |
 | `top_pick` | The best steal you haven't sniped yet (never a one-star pick) |
