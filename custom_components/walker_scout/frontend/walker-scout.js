@@ -577,7 +577,6 @@ class WalkerScoutCard extends HTMLElement {
     else fallback();
   }
 }
-customElements.define('walker-scout-card', WalkerScoutCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: 'walker-scout-card', name: 'Walker Scout',
@@ -650,6 +649,16 @@ class WalkerScoutStrategy {
     };
   }
 }
-customElements.define('ll-strategy-dashboard-walker-scout', class extends HTMLElement {
+class WalkerScoutStrategyElement extends HTMLElement {
   static async generate(config, hass) { return WalkerScoutStrategy.generate(config, hass); }
-});
+}
+
+// Home Assistant swaps in its own element registry while it starts, and this
+// file loads before that. Anything defined too early is lost, so wait until
+// Home Assistant's own root element exists, then register on that registry.
+const register = () => {
+  if (!customElements.get('home-assistant')) return setTimeout(register, 40);
+  if (!customElements.get('walker-scout-card')) customElements.define('walker-scout-card', WalkerScoutCard);
+  if (!customElements.get('ll-strategy-dashboard-walker-scout')) customElements.define('ll-strategy-dashboard-walker-scout', WalkerScoutStrategyElement);
+};
+register();
