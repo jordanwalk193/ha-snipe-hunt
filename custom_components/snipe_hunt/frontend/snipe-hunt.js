@@ -90,13 +90,14 @@ const room = p => p.max == null ? -999 : Number(p.max) - Number(p.bid_now ?? p.p
 // Dollars under the going rate you would pay, shipping included: the asking
 // price for Buy It Now, the bot's max for an auction (the same sum the stars use).
 const saved = p => p.value == null ? 0 : Number(p.value) - (Number(p.is_auction ? p.max : p.price) + Number(p.shipping ?? 5));
-// Steals first: most deal stars, then the brag tier, then the most dollars saved.
+// Steals first: most deal stars, then cards that slipped through the cracks,
+// then the brag tier, then the most dollars saved.
 // Left out: picks with no rating, ones under 10% below value (one star), and
 // auctions already bid past the bot's max.
 const TIER_RANK = {fire: 0, green: 1, yellow: 2};
 const steals = picks => picks
   .filter(p => p.deal >= 2 && !(p.is_auction && p.max != null && Number(p.bid_now ?? p.price) > Number(p.max)))
-  .sort((x, y) => y.deal - x.deal || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x));
+  .sort((x, y) => y.deal - x.deal || !EDGE[x.edge] - !EDGE[y.edge] || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x));
 
 // What every panel gets: the snapshot plus a few views of it.
 const context = (card) => {
@@ -120,6 +121,10 @@ const context = (card) => {
 const span = hours => hours === 24 ? '24 hours' : (hours % 24 === 0 ? hours / 24 + ' days' : hours + ' hours');
 
 // --------------------------------------------------------------------- rows
+// Why a pick is more than a fair price, when the bot says so: a seller's pricing
+// mistake, a listing other buyers won't find, or an auction nobody is watching.
+const EDGE = {mispriced: ['💎 Price mistake', '#00838f'], hidden: ['🕵️ Slipped through', '#5e35b1'], sleeper: ['😴 Sleeper', '#ad1457']};
+const edge = p => EDGE[p.edge] ? pill(EDGE[p.edge][0], EDGE[p.edge][1]) + ' ' : '';
 const badge = p => {
   if (p.is_auction && p.end_time) {
     const ms = msLeft(p.end_time);
@@ -157,7 +162,7 @@ const pickLine = (p, lead, extra) => {
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${t[0]} ${esc(p.card)}</a>
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
-      <div style="font-size:13px;margin-top:3px">${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
+      <div style="font-size:13px;margin-top:3px">${edge(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
@@ -225,7 +230,7 @@ const PANELS = {
       <div style="flex:1;min-width:0">
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
-        <div style="font-size:15px">${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
+        <div style="font-size:15px">${edge(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span></div>`}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
@@ -270,6 +275,9 @@ const PANELS = {
     const tier = store('tier', 'all'), kind = store('kind', 'all'), cover = store('cover', 'all'), sort = store('sort', 'best'), limit = store('limit', 'page');
     let picks = c.picks.slice();
     const total = picks.length;
+    const edges = picks.filter(p => EDGE[p.edge]).length, why = store('why', 'all');
+    if (EDGE[why]) picks = picks.filter(p => p.edge === why);
+    if (why === 'any') picks = picks.filter(p => EDGE[p.edge]);
     if (tier !== 'all') picks = picks.filter(p => p.tier === tier);
     if (kind === 'auction') picks = picks.filter(p => p.is_auction);
     if (kind === 'bin') picks = picks.filter(p => !p.is_auction);
@@ -284,6 +292,7 @@ const PANELS = {
     return `<div style="padding-top:6px">` +
       chips('tier', 'all', [['all', 'All tiers'], ['fire', '🔥 Brag'], ['green', '🟢 Value'], ['yellow', '🟡 Cheap']]) +
       chips('kind', 'all', [['all', 'All types'], ['auction', 'Auctions'], ['bin', 'Buy now / offer']]) +
+      (edges || why !== 'all' ? chips('why', 'all', [['all', 'Any reason'], ['any', 'Slipped through the cracks (' + edges + ')'], ...Object.entries(EDGE).map(([k, v]) => [k, v[0]])]) : '') +
       (c.gixenOn ? chips('cover', 'all', [['all', 'Sniped or not'], ['open', 'No snipe yet'], ['sniped', '🎯 Sniped']]) : '') +
       chips('sort', 'best', [['best', 'Best first'], ['deal', '★ Best deal'], ['ending', 'Ending soonest'], ['room', 'Most room'], ['cheap', 'Cheapest']]) +
       `<div class="muted" style="font-size:12px;margin:10px 0 2px">Showing ${shown.length} of ${picks.length}${picks.length !== total ? ' (' + total + ' live picks in all)' : ''}</div>` +

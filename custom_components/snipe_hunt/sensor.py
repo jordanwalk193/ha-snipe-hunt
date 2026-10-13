@@ -44,6 +44,7 @@ def _gixen(data: Data) -> Data:
 
 
 TIER_RANK = {"fire": 0, "green": 1}
+EDGES = ("mispriced", "hidden", "sleeper")   # why a pick slipped through the cracks
 
 
 def _saved(pick: Data) -> float:
@@ -58,7 +59,8 @@ def _saved(pick: Data) -> float:
 def _top_pick(data: Data) -> Data:
     """The best steal you haven't sniped yet, as the dashboard's Top pick chooses it.
 
-    Most deal stars first, then the brag tier, then the most dollars saved. A
+    Most deal stars first, then cards that slipped through the cracks, then the
+    brag tier, then the most dollars saved. A
     one-star pick (about the going rate) and an auction already bid past its
     max are never the top pick; a pick with no rating, from an older bot, can be.
     """
@@ -67,7 +69,8 @@ def _top_pick(data: Data) -> Data:
         (p for p in good if (p.get("deal") or 0) >= 2 and not (
             p.get("is_auction") and p.get("max") is not None
             and (p.get("bid_now") or p.get("price") or 0) > p["max"])),
-        key=lambda p: (-p["deal"], TIER_RANK[p["tier"]], -_saved(p)))
+        key=lambda p: (-p["deal"], p.get("edge") not in EDGES, TIER_RANK[p["tier"]],
+                       -_saved(p)))
     ranked = steals + [p for p in good if p.get("deal") is None]
     return next((p for p in ranked if p.get("snipe") is None), ranked[0] if ranked else {})
 
@@ -124,7 +127,7 @@ SENSORS: tuple[SnipeHuntSensor, ...] = (
         key="top_pick",
         value=lambda d: (_top_pick(d).get("card") or "")[:255] or None,
         attrs=lambda d: _pick("item_id", "tier", "price", "shipping", "total", "max",
-                              "max_basis", "value", "deal", "deal_pct", "end_time", "seller", "url",
+                              "max_basis", "value", "deal", "deal_pct", "edge", "end_time", "seller", "url",
                               "snipe")(_top_pick(d)),
     ),
     SnipeHuntSensor(key="listings", state_class=MEASUREMENT,
