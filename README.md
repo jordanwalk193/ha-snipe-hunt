@@ -102,7 +102,7 @@ actions:
         url: "{{ state_attr(trigger.entity_id, 'url') }}"
 ```
 
-The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`.
+The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `value`, `deal` (1 to 5 stars), `deal_pct`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`.
 
 Services: `snipe_hunt.search_now`, `refresh`, `skip_pick` (`item_id`), `restore_skipped`, `mark_filed` (`ids`), `gixen_refresh` (`login`), `send_test_alert`.
 

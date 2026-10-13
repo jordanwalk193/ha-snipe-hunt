@@ -78,6 +78,14 @@ const setBtn = (label, key, value, color) => `<span class="btn" role="button" da
 const chips = (key, def, options) => `<div class="row">` + options.map(([value, label]) =>
   `<span class="btn${store(key, def) === value ? ' on' : ''}" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}">${label}</span>`).join('') + `</div>`;
 const shipTxt = p => p.shipping == null ? 'ship ?' : (p.shipping == 0 ? 'free ship' : money(p.shipping) + ' ship');
+// ★★★★☆ 42% under $25 value. For an auction that is at the bot's max, shipping included.
+const worth = v => '$' + (Number(v) >= 10 ? Math.round(v) : Number(v).toFixed(2));
+const deal = p => {
+  if (!p.deal) return '';
+  const color = p.deal >= 4 ? '#43a047' : (p.deal === 3 ? '#f9a825' : '#78909c');
+  const text = p.deal_pct ? p.deal_pct + '% under ' + worth(p.value) + ' value' + (p.is_auction ? ' at max' : '') : 'about its ' + worth(p.value) + ' value';
+  return `<span class="deal" title="How far under its going rate you would pay, shipping included"><span style="color:${color};letter-spacing:1px">${'★'.repeat(p.deal)}<span style="opacity:.3">${'★'.repeat(5 - p.deal)}</span></span> ${text}</span>`;
+};
 const room = p => p.max == null ? -999 : Number(p.max) - Number(p.bid_now ?? p.price);
 
 // What every panel gets: the snapshot plus a few views of it.
@@ -139,6 +147,7 @@ const pickRow = p => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       <div style="font-size:13px;margin-top:3px">${money(p.price)} + ${shipTxt(p)}${now}${max}</div>
+      ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · ${esc(p.item_id)}</div>
       ${pickButtons(p)}
@@ -202,6 +211,7 @@ const PANELS = {
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
         <div style="font-size:15px">${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span></div>`}
+        ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
         ${pickButtons(p)}
       </div></div>`;
@@ -243,12 +253,13 @@ const PANELS = {
     if (sort === 'ending') picks.sort((x, y) => end(x) < end(y) ? -1 : (end(x) > end(y) ? 1 : 0));
     if (sort === 'cheap') picks.sort((x, y) => (x.total ?? 1e9) - (y.total ?? 1e9));
     if (sort === 'room') picks.sort((x, y) => room(y) - room(x));
+    if (sort === 'deal') picks.sort((x, y) => (y.deal_pct ?? -1) - (x.deal_pct ?? -1));
     const shown = limit === 'all' ? picks : picks.slice(0, c.perPage);
     return `<div style="padding-top:6px">` +
       chips('tier', 'all', [['all', 'All tiers'], ['fire', '🔥 Brag'], ['green', '🟢 Value'], ['yellow', '🟡 Cheap']]) +
       chips('kind', 'all', [['all', 'All types'], ['auction', 'Auctions'], ['bin', 'Buy now / offer']]) +
       (c.gixenOn ? chips('cover', 'all', [['all', 'Sniped or not'], ['open', 'No snipe yet'], ['sniped', '🎯 Sniped']]) : '') +
-      chips('sort', 'best', [['best', 'Best first'], ['ending', 'Ending soonest'], ['room', 'Most room'], ['cheap', 'Cheapest']]) +
+      chips('sort', 'best', [['best', 'Best first'], ['deal', '★ Best deal'], ['ending', 'Ending soonest'], ['room', 'Most room'], ['cheap', 'Cheapest']]) +
       `<div class="muted" style="font-size:12px;margin:10px 0 2px">Showing ${shown.length} of ${picks.length}${picks.length !== total ? ' (' + total + ' live picks in all)' : ''}</div>` +
       (shown.length ? shown.map(pickRow).join('') : empty('Nothing matches those filters.')) +
       (picks.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + picks.length, 'limit', 'all', '#546e7a')}</div>`
@@ -416,6 +427,7 @@ const STYLE = `
   ha-card { padding: 4px 14px 12px; font-size: 14px; overflow: hidden; }
   a { color: var(--primary-color); }
   .muted { color: var(--secondary-text-color); }
+  .deal { color: var(--secondary-text-color); white-space: nowrap; }
   .empty { padding: 8px 0; }
   .line { border-top: 1px solid var(--divider-color); }
   .line > b { flex: none; }
