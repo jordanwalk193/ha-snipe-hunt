@@ -162,10 +162,38 @@ async def test_options_flow_and_unload(hass, entry):
     assert result["type"] is FlowResultType.FORM
     result = await hass.config_entries.options.async_configure(result["flow_id"], {
         "scan_interval": 60, "tabs": ["today", "bot"], "picks_per_page": 10,
-        "accent_color": [0, 0, 255], "event_tiers": ["fire"]})
+        "accent_color": [0, 0, 255], "event_tiers": ["fire"],
+        "ending_soon_minutes": 45})
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.runtime_data.update_interval.total_seconds() == 60
     assert await hass.config_entries.async_unload(entry.entry_id)
     with pytest.raises(HomeAssistantError):
         await hass.services.async_call(DOMAIN, "refresh", {}, blocking=True)
+
+
+async def test_calendar_event_entity_and_ending_soon(hass, entry, bot, hass_client):
+    from datetime import timedelta
+
+    from homeassistant.util import dt as dt_util
+
+    calendar = state(hass, entry, "calendar", "auctions")
+    assert calendar.attributes["message"].startswith("⚠️ No snipe: 2023 Topps Chrome")
+    client = await hass_client()
+    resp = await client.get(f"/api/calendars/{calendar.entity_id}"
+                            "?start=2099-01-01T00:00:00Z&end=2099-01-04T00:00:00Z")
+    summaries = [e["summary"] for e in await resp.json()]
+    assert len(summaries) == 2 and summaries[1].startswith("🎯 Snipe 8.08")
+
+    assert state(hass, entry, "binary_sensor", "unsniped_ending_soon").state == "off"
+    soon = (dt_util.now() + timedelta(minutes=10)).isoformat(timespec="minutes")
+    bot.snapshot["picks"].append({**PICK, "item_id": "666666666666", "tier": "green",
+                                  "end_time": soon})
+    bot.snapshot["status"]["need_snipe"].append("666666666666")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    ending = state(hass, entry, "binary_sensor", "unsniped_ending_soon")
+    assert ending.state == "on" and ending.attributes["item_id"] == "666666666666"
+    new_pick = state(hass, entry, "event", "new_pick")
+    assert new_pick.attributes["event_type"] == "green"
+    assert new_pick.attributes["item_id"] == "666666666666"

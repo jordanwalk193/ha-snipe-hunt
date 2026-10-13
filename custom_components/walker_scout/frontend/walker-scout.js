@@ -619,7 +619,9 @@ class WalkerScoutStrategy {
       gixen: {title: 'Gixen', path: 'gixen', icon: 'mdi:target', sections: [
         section(heading('Scheduled snipes', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),
         section(heading('Good auctions with no snipe', 'mdi:target-account'), panel('gixen_gap')),
-        section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record')),
+        section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
+          ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
+            {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
       ]},
       collection: {title: 'Collection', path: 'collection', icon: 'mdi:cards', sections: [
         section(heading('Collection', 'mdi:cards', id('sensor', 'collection')), panel('collection'),

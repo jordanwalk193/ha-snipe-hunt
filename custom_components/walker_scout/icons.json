@@ -83,6 +83,9 @@
       },
       "over_budget": {
         "default": "mdi:cash-remove"
+      },
+      "unsniped_ending_soon": {
+        "default": "mdi:alarm-light-outline"
       }
     },
     "button": {
@@ -156,6 +159,16 @@
       },
       "extra_searches": {
         "default": "mdi:text-search"
+      }
+    },
+    "calendar": {
+      "auctions": {
+        "default": "mdi:gavel"
+      }
+    },
+    "event": {
+      "new_pick": {
+        "default": "mdi:cards-playing-outline"
       }
     }
   },

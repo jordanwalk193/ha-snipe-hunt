@@ -10,7 +10,8 @@ Walker Scout only recommends. Nothing in this integration can bid, buy, make an 
 - **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, alert rules, quiet hours, watched sellers, extra searches). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
 - **A dashboard**: one card type with fifteen panels, and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
-- **An event**, `walker_scout_new_pick`, fired for each new pick so you can build your own automations.
+- **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
+- **Automation hooks**: a "New pick" event entity (and the raw `walker_scout_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
 ## Install
 
@@ -67,7 +68,7 @@ accent: "#c41e3a"       # optional
 
 ## Options
 
-**Configure** on the integration sets how often Home Assistant checks the bot (30 seconds by default), the dashboard tabs, picks per page, the accent colour, which tiers fire the new-pick event, and an optional web address for the weekly reports folder.
+**Configure** on the integration sets how often Home Assistant checks the bot (30 seconds by default), the dashboard tabs, picks per page, the accent colour, which tiers fire the new-pick event, how many minutes count as "ending soon", and an optional web address for the weekly reports folder.
 
 ## Automations
 
@@ -83,6 +84,22 @@ actions:
       entity_id: light.office_lamp
     data:
       color_name: red
+```
+
+Or get told when a good auction is about to end with no snipe on it:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.walker_scout_bot_unsniped_auction_ending_soon
+    to: "on"
+actions:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: No snipe yet
+      message: "{{ state_attr(trigger.entity_id, 'card') }} ends soon. Max {{ state_attr(trigger.entity_id, 'max') }}"
+      data:
+        url: "{{ state_attr(trigger.entity_id, 'url') }}"
 ```
 
 The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`.

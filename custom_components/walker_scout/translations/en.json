@@ -53,12 +53,14 @@
           "picks_per_page": "Picks shown before \"Show all\"",
           "accent_color": "Accent colour",
           "event_tiers": "Fire a new-pick event for",
-          "report_url": "Weekly reports folder"
+          "report_url": "Weekly reports folder",
+          "ending_soon_minutes": "\"Ending soon\" means within"
         },
         "data_description": {
           "tabs": "Which tabs the Walker Scout dashboard strategy builds, in this order.",
           "event_tiers": "A walker_scout_new_pick event fires for each new pick in these tiers, for your own automations.",
-          "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Bot tab links to the latest one."
+          "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Bot tab links to the latest one.",
+          "ending_soon_minutes": "The \"Unsniped auction ending soon\" sensor turns on when a good auction with no snipe ends within this many minutes."
         }
       }
     }
@@ -169,13 +171,16 @@
         "name": "Searching eBay"
       },
       "problem": {
-        "name": "Bot problem"
+        "name": "Problem"
       },
       "gixen_connected": {
         "name": "Gixen"
       },
       "over_budget": {
         "name": "Over budget"
+      },
+      "unsniped_ending_soon": {
+        "name": "Unsniped auction ending soon"
       }
     },
     "button": {
@@ -249,6 +254,25 @@
       },
       "extra_searches": {
         "name": "Extra searches"
+      }
+    },
+    "calendar": {
+      "auctions": {
+        "name": "Auctions"
+      }
+    },
+    "event": {
+      "new_pick": {
+        "name": "New pick",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "fire": "Brag pick",
+              "green": "Value pick",
+              "yellow": "Cheap new card"
+            }
+          }
+        }
       }
     }
   },

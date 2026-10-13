@@ -32,6 +32,7 @@ from .const import (
     OPT_PICKS_PER_PAGE,
     OPT_REPORT_URL,
     OPT_SCAN_INTERVAL,
+    OPT_SOON_MINUTES,
     OPT_TABS,
     TABS,
     TIERS,
@@ -50,6 +51,8 @@ OPTIONS_SCHEMA = vol.Schema({
     vol.Required(OPT_ACCENT): ColorRGBSelector(),
     vol.Required(OPT_EVENT_TIERS): SelectSelector(SelectSelectorConfig(
         options=TIERS, multiple=True, translation_key="tiers")),
+    vol.Required(OPT_SOON_MINUTES): NumberSelector(NumberSelectorConfig(
+        min=1, max=720, step=1, unit_of_measurement="min", mode=NumberSelectorMode.BOX)),
     vol.Optional(OPT_REPORT_URL): URL,
 })
 
@@ -148,6 +151,7 @@ class WalkerScoutOptionsFlow(OptionsFlow):
         if user_input is not None:
             user_input[OPT_SCAN_INTERVAL] = int(user_input[OPT_SCAN_INTERVAL])
             user_input[OPT_PICKS_PER_PAGE] = int(user_input[OPT_PICKS_PER_PAGE])
+            user_input[OPT_SOON_MINUTES] = int(user_input[OPT_SOON_MINUTES])
             return self.async_create_entry(data=user_input)
         return self.async_show_form(
             step_id="init",

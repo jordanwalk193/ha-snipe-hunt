@@ -14,7 +14,10 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .coordinator import WalkerScoutConfigEntry
+from homeassistant.util import dt as dt_util
+
+from .const import OPT_SOON_MINUTES
+from .coordinator import WalkerScoutConfigEntry, options
 from .entity import WalkerScoutEntity
 
 
@@ -47,12 +50,47 @@ BINARY_SENSORS: tuple[WalkerScoutBinarySensor, ...] = (
 )
 
 
+def ending_soon(data: dict[str, Any], minutes: int) -> list[dict[str, Any]]:
+    """Good auctions with no snipe that end within `minutes`, soonest first."""
+    wanted = set(data["status"].get("need_snipe", []))
+    now = dt_util.utcnow()
+    out = []
+    for pick in data.get("picks", []):
+        end = dt_util.parse_datetime(pick.get("end_time") or "")
+        if pick["item_id"] in wanted and end and 0 < (end - now).total_seconds() <= minutes * 60:
+            out.append(pick)
+    return sorted(out, key=lambda p: dt_util.parse_datetime(p["end_time"]))
+
+
 async def async_setup_entry(
     hass: HomeAssistant, entry: WalkerScoutConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    async_add_entities(
-        WalkerScoutBinarySensorEntity(entry.runtime_data, d) for d in BINARY_SENSORS
-    )
+    async_add_entities([
+        *(WalkerScoutBinarySensorEntity(entry.runtime_data, d) for d in BINARY_SENSORS),
+        WalkerScoutEndingSoon(entry.runtime_data, "unsniped_ending_soon"),
+    ])
+
+
+class WalkerScoutEndingSoon(WalkerScoutEntity, BinarySensorEntity):
+    """On while a good auction with no snipe is about to end. Made for automations."""
+
+    def _soon(self) -> list[dict[str, Any]]:
+        minutes = options(self.coordinator.config_entry)[OPT_SOON_MINUTES]
+        return ending_soon(self.coordinator.data, minutes)
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self._soon())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        soon = self._soon()
+        first = soon[0] if soon else {}
+        return {
+            "count": len(soon),
+            "within_minutes": options(self.coordinator.config_entry)[OPT_SOON_MINUTES],
+            **{k: first.get(k) for k in ("item_id", "card", "tier", "max", "end_time", "url")},
+        }
 
 
 class WalkerScoutBinarySensorEntity(WalkerScoutEntity, BinarySensorEntity):

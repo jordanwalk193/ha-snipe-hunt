@@ -13,6 +13,7 @@ OPT_PICKS_PER_PAGE = "picks_per_page"
 OPT_TABS = "tabs"
 OPT_EVENT_TIERS = "event_tiers"
 OPT_REPORT_URL = "report_url"
+OPT_SOON_MINUTES = "ending_soon_minutes"
 
 TABS = ["today", "picks", "gixen", "collection", "bot"]
 TIERS = ["fire", "green", "yellow"]
@@ -23,6 +24,7 @@ DEFAULT_OPTIONS = {
     OPT_TABS: TABS,
     OPT_EVENT_TIERS: TIERS,
     OPT_REPORT_URL: "",
+    OPT_SOON_MINUTES: 30,
 }
 
 EVENT_NEW_PICK = "walker_scout_new_pick"
