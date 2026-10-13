@@ -75,7 +75,7 @@ accent: "#c41e3a"       # optional
 | `top_deals` | The ten best steals, ranked: most deal stars, then brag tier, then dollars under the going rate (`count:` changes the ten) |
 | `calls` | Scorecard: sold prices on record, how many picked auctions closed at or under the bot's max, and how far its going rate was from the real price |
 | `sold` | Final bids of the auctions the bot watched, newest first, with the bot's call on the ones it picked |
-| `top_pick` | The best pick you haven't sniped yet |
+| `top_pick` | The best steal you haven't sniped yet (never a one-star pick) |
 | `need_snipe` | Good auctions ending soon with no snipe |
 | `snipes_today` | Your Gixen snipes ending in the next 24 hours |
 | `pay` | Wins waiting on payment, grouped by seller |

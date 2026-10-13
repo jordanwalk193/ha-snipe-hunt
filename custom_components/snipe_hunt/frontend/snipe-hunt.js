@@ -209,11 +209,15 @@ const PANELS = {
   }],
 
   top_pick: ['Top pick', true, c => {
-    // The best steal among the 🔥/🟢 picks you haven't sniped yet; with no rated
-    // steal, the best of them by tier; if they're all covered, the best one.
+    // The best steal among the 🔥/🟢 picks, ones you haven't sniped first. A pick
+    // rated one star (about the going rate) is never the top pick; a pick with
+    // no rating at all, from an older bot, still can be.
     const good = c.picks.filter(x => GOOD.includes(x.tier));
-    const p = steals(good).find(x => x.snipe == null) || good.find(x => x.snipe == null) || good[0];
-    if (!p) return empty('No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
+    const ranked = [...steals(good), ...good.filter(x => x.deal == null)];
+    const p = ranked.find(x => x.snipe == null) || ranked[0];
+    if (!p) return empty(good.length
+      ? 'Nothing live is a real steal right now: every 🔥 and 🟢 pick is close to its going rate. They are all on the Picks tab.'
+      : 'No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
     const t = TIER[p.tier] || ['•', '#546e7a'];
     const gap = room(p);
     return `<div data-row style="display:flex;gap:16px;align-items:center;margin-top:10px;padding:14px;border-radius:16px;background:linear-gradient(135deg,${t[1]}55,transparent);border:1px solid ${t[1]}">

@@ -39,13 +39,14 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the dashboard cards, the services and the websocket commands."""
     integration = await async_get_integration(hass, DOMAIN)
+    script = Path(__file__).parent / "frontend" / "snipe-hunt.js"
     await hass.http.async_register_static_paths([
-        StaticPathConfig(
-            FRONTEND_URL, str(Path(__file__).parent / "frontend" / "snipe-hunt.js"), False
-        )
+        StaticPathConfig(FRONTEND_URL, str(script), False)
     ])
-    # The version in the URL makes browsers fetch the new cards after an update.
-    frontend.add_extra_js_url(hass, f"{FRONTEND_URL}?v={integration.version}")
+    # The version and the file's own date in the URL make browsers fetch the
+    # new cards after any update, even one that kept the version number.
+    changed = int((await hass.async_add_executor_job(script.stat)).st_mtime)
+    frontend.add_extra_js_url(hass, f"{FRONTEND_URL}?v={integration.version}-{changed}")
     async_setup_services(hass)
     async_setup_websocket(hass)
     return True

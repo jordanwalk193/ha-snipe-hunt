@@ -43,10 +43,33 @@ def _gixen(data: Data) -> Data:
     return gixen if gixen.get("available") else {}
 
 
+TIER_RANK = {"fire": 0, "green": 1}
+
+
+def _saved(pick: Data) -> float:
+    """Dollars under the going rate, paying the max on an auction or the asking price."""
+    if pick.get("value") is None:
+        return 0.0
+    pay = pick.get("max") if pick.get("is_auction") else pick.get("price")
+    shipping = pick.get("shipping")
+    return pick["value"] - ((pay or 0) + (5 if shipping is None else shipping))
+
+
 def _top_pick(data: Data) -> Data:
-    """The best pick without a snipe yet; if they are all covered, the best one."""
-    good = [p for p in data["picks"] if p.get("tier") in ("fire", "green")]
-    return next((p for p in good if p.get("snipe") is None), good[0] if good else {})
+    """The best steal you haven't sniped yet, as the dashboard's Top pick chooses it.
+
+    Most deal stars first, then the brag tier, then the most dollars saved. A
+    one-star pick (about the going rate) and an auction already bid past its
+    max are never the top pick; a pick with no rating, from an older bot, can be.
+    """
+    good = [p for p in data["picks"] if p.get("tier") in TIER_RANK]
+    steals = sorted(
+        (p for p in good if (p.get("deal") or 0) >= 2 and not (
+            p.get("is_auction") and p.get("max") is not None
+            and (p.get("bid_now") or p.get("price") or 0) > p["max"])),
+        key=lambda p: (-p["deal"], TIER_RANK[p["tier"]], -_saved(p)))
+    ranked = steals + [p for p in good if p.get("deal") is None]
+    return next((p for p in ranked if p.get("snipe") is None), ranked[0] if ranked else {})
 
 
 def _next_snipe(data: Data) -> datetime | None:

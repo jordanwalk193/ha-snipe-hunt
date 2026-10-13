@@ -41,6 +41,27 @@ async def test_user_flow_checks_the_bot_before_saving(hass, bot):
     assert result["data"] == {CONF_URL: "http://bot.test:8766", CONF_TOKEN: "t"}
 
 
+async def test_top_pick_is_the_best_steal_and_never_a_one_star_pick(hass, entry, bot):
+    bot.snapshot["picks"] = [
+        {**PICK, "item_id": "1", "card": "about the going rate", "deal": 1, "value": 19.0},
+        {**PICK, "item_id": "2", "card": "good", "tier": "green", "deal": 3, "value": 30.0},
+        {**PICK, "item_id": "3", "card": "best", "deal": 4, "value": 40.0},
+        {**PICK, "item_id": "4", "card": "bid past its max", "deal": 5, "value": 90.0,
+         "bid_now": 20.0},
+        {**PICK, "item_id": "5", "card": "cheap card", "tier": "yellow", "deal": 5}]
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert state(hass, entry, "sensor", "top_pick").state == "best"
+    bot.snapshot["picks"][2]["snipe"] = {"max": 12.12}      # covered: on to the next steal
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert state(hass, entry, "sensor", "top_pick").state == "good"
+    bot.snapshot["picks"] = bot.snapshot["picks"][:1]       # only the one-star pick is left
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert state(hass, entry, "sensor", "top_pick").state == "unknown"
+
+
 async def test_scorecard_sensors_wait_for_a_bot_that_keeps_sold_prices(hass, entry, bot):
     assert state(hass, entry, "sensor", "sold_prices").state == "unknown"
     assert state(hass, entry, "sensor", "calls_under_max").state == "unknown"
