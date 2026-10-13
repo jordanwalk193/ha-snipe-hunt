@@ -10,7 +10,8 @@
  */
 const DOMAIN = 'walker_scout';
 const GIXEN_URL = 'https://www.gixen.com/main/home_2.php';
-const EBAY_URL = 'https://www.ebay.com/sch/i.html?_nkw=jordan+walker&_sacat=261328&_sop=1&LH_Auction=1';
+// Auctions for the bot's player, ending soonest. Older bots don't say who that is.
+const ebayUrl = d => 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponent(((d.profile || {}).player || 'jordan walker').toLowerCase()) + '&_sop=1&LH_Auction=1';
 const HOUR = 3600e3;
 
 // ---------------------------------------------------------------- data feed
@@ -179,7 +180,7 @@ const PANELS = {
       ${searchBtn(c)}
       ${act('Refresh', {action: 'refresh'}, {busy: 'Refreshing…'})}
       ${linkBtn('Gixen ↗', GIXEN_URL)}
-      ${linkBtn('eBay ↗', EBAY_URL)}
+      ${linkBtn('eBay ↗', ebayUrl(c.d))}
     </div>
     <div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5">
       <span class="dot" style="background:${color}"></span>${a.listings} listings watched · ${c.picks.length} live picks · searched ${ago(a.last_search)}

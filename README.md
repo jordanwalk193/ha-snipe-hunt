@@ -1,6 +1,8 @@
 # Walker Scout for Home Assistant
 
-A Home Assistant integration for **Walker Scout**, a self-hosted bot that hunts eBay for underpriced Jordan Walker (St. Louis Cardinals) cards. The bot runs on its own machine; this integration shows what it knows, lets you steer it, and ships the dashboard.
+A Home Assistant integration for [**Snipe Hunt**](https://github.com/jordanwalk193/snipe-hunt), a self-hosted bot that hunts eBay for underpriced cards of the player you collect. The bot runs on its own machine; this integration shows what it knows, lets you steer it, and ships the dashboard.
+
+It is named after the first player the bot was built for (Jordan Walker of the St. Louis Cardinals) and works with a Snipe Hunt bot set up for any player.
 
 Walker Scout only recommends. Nothing in this integration can bid, buy, make an offer or change a Gixen snipe, because the bot has no way to do any of those.
 
@@ -108,7 +110,7 @@ Services: `walker_scout.search_now`, `refresh`, `skip_pick` (`item_id`), `restor
 
 ## The bot's API
 
-The integration expects the bot to serve, behind a bearer token:
+[Snipe Hunt](https://github.com/jordanwalk193/snipe-hunt) serves this out of the box. The integration expects the bot to serve, behind a bearer token:
 
 - `GET /api/snapshot`: one JSON object with `api: 1`, `status`, `picks`, `gixen`, `cards`, `collection`, `pipeline`, `record`, `wantlist`, `settings` and `last_action`.
 - `POST /api/action`: `{"action": "...", ...}`; answers `{"ok", "message", "snapshot"}`.
@@ -120,3 +122,9 @@ The integration expects the bot to serve, behind a bearer token:
 pip install pytest-homeassistant-custom-component
 pytest
 ```
+
+## Support
+
+This integration is free. If it finds you a steal and you'd like to say thanks:
+
+[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://paypal.me/jordanwalker1531)
