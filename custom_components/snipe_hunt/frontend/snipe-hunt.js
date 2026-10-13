@@ -182,6 +182,25 @@ const pickLine = (p, lead, extra) => {
       ${pickButtons(p)}
     </div></div>`;
 };
+// The bot's second opinion on one of your Gixen amounts (snipecheck.py).
+const CHECK = {over: ['💸 Over the going rate', '#e53935'], fair: ['👍 Fair: likely to win', '#1e88e5'], steal: ['💎 Real discount', '#43a047'],
+  long_shot: ['🎲 Long shot', '#8e24aa'], outbid: ['📈 Bid past it', '#e53935'], unknown: ['❔ No price yet', '#78909c']};
+const BASIS = {sales: 'recent sales', sold: 'a sale the bot recorded', estimate: 'an estimate'};
+const snipeCheck = s => {
+  const k = s.check;
+  if (!k || !CHECK[k.verdict]) return '';
+  const [label, color] = CHECK[k.verdict];
+  let text = '';
+  if (k.value != null) {
+    text = `goes for about <b style="color:var(--primary-text-color)">${money(k.value)}</b> delivered <span class="muted">(${BASIS[k.basis] || 'an estimate'})</span>`;
+    if (k.verdict === 'over') text += ` · your snipe would pay ${-k.pct}% more`;
+    else if (k.verdict !== 'outbid') text += ` · yours is ${k.pct}% under`;
+    if ((k.verdict === 'long_shot' || k.verdict === 'steal') && k.win != null) text += ` · to win ≈ <b style="color:var(--primary-text-color)">${cents(k.win)}</b>`;
+    if (k.verdict === 'outbid') text += k.room ? ' · still under that at today\'s bid' : ' · no bargain left at today\'s bid';
+  } else text = 'the bot will price this card at its next hourly run';
+  return `<div style="font-size:12px;margin-top:3px"><span class="pill" style="background:${color}">${label}</span> ${text}</div>` +
+    (k.note ? `<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.3">${esc(k.note)}</div>` : '');
+};
 const snipeRow = s => {
   const diff = s.bot_max != null && s.max_bid != null ? Number(s.max_bid) - Number(s.bot_max) : null;
   const note = s.bot_max == null ? '' : ` · bot max ${cents(s.bot_max)}` + (diff > 0.005 ? ' (yours is higher)' : (diff < -0.005 ? ' (yours is lower)' : ''));
@@ -190,8 +209,9 @@ const snipeRow = s => {
     <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
       <a class="title" href="${esc(s.url)}" target="_blank" rel="noopener" style="min-width:0;${s.outbid ? 'opacity:.65' : ''}">${(TIER[s.tier] || [''])[0]} ${esc(s.title || s.item_id)}</a><span style="flex:none">${state}</span></div>
     <div class="muted" style="font-size:12px;margin-top:2px"><b style="color:var(--primary-text-color)">Snipe ${s.max_bid == null ? '?' : cents(s.max_bid)}</b> · bid now ${s.current_bid == null ? '?' : cents(s.current_bid)}${note}</div>
-    <div class="muted" style="font-size:11px">${esc(s.seller)} · ${s.outbid ? 'ends in ' + left(s.end_time) : 'ends ' + when(s.end_time)} · ${esc(s.item_id)}</div>
-    ${s.outbid ? `<div class="row tight">${copyBtn('Copy item #', s.item_id)}${s.bot_max != null && Number(s.bot_max) > Number(s.current_bid) ? copyBtn('Copy bot max ' + cents(s.bot_max), cents(s.bot_max)) : ''}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>` : ''}
+    ${snipeCheck(s)}
+    <div class="muted" style="font-size:11px;margin-top:2px">${esc(s.seller)} · ${s.outbid ? 'ends in ' + left(s.end_time) : 'ends ' + when(s.end_time)} · ${esc(s.item_id)}</div>
+    ${s.outbid ? `<div class="row tight">${copyBtn('Copy item #', s.item_id)}${s.bot_max != null && Number(s.bot_max) > Number(s.current_bid) ? copyBtn('Copy bot max ' + cents(s.bot_max), cents(s.bot_max)) : ''}${s.check && s.check.room && s.check.win != null && Number(s.check.win) > Number(s.current_bid) ? copyBtn('Copy win ' + cents(s.check.win), cents(s.check.win)) : ''}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>` : ''}
   </div>`;
 };
 const gixenDown = c => c.gixenOff
@@ -437,13 +457,21 @@ const PANELS = {
     if (show === 'over') snipes = snipes.filter(s => s.outbid);
     if (show === 'today') snipes = snipes.filter(s => msLeft(s.end_time) < 24 * HOUR);
     if (show === 'play') snipes = snipes.filter(s => !s.outbid);
+    if (show === 'long_shot' || show === 'steal') snipes = snipes.filter(s => s.check && s.check.verdict === show);
+    const n = a.analysis;
+    const verdicts = !n ? '' : `<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5"><b style="color:var(--primary-text-color)">The bot's read on your amounts:</b> ` +
+      [['steal', 'real discounts'], ['fair', 'fair bids'], ['long_shot', 'long shots'], ['over', 'over the going rate'], ['unknown', 'not priced yet']]
+        .filter(([k]) => n[k]).map(([k, t]) => `<b style="color:${CHECK[k][1]}">${n[k]}</b> ${t}`).join(' · ') +
+      (n.worth ? `<br>The priced snipes still in play add up to ${money(n.committed)} at your maxes, on cards that go for about ${money(n.worth)} delivered.` : '') + `</div>`;
     return `<div style="padding-top:10px">` + grid(3, [
       stat('SNIPES SET', all, '#6a1b9a', '🎯'),
       stat('STILL IN PLAY', '$' + Math.round(a.committed), '#1e88e5', '💰'),
       stat('OVER YOUR MAX', a.outbid_count, a.outbid_count ? '#e53935' : '#43a047', '📈'),
     ]) + (a.problem ? gixenStale(a)
       : `<div class="row" style="align-items:center;margin-top:10px"><span class="muted" style="font-size:12px">Read from Gixen ${ago(a.read_at)}.</span>${act('Re-read now', {action: 'gixen_refresh'}, {busy: 'Reading…'})}${linkBtn('Open Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>`) +
-      chips('snipes', 'all', [['all', 'All ' + all], ['today', 'Ending in 24h'], ['play', 'Still in play'], ['over', 'Over your max']]) +
+      verdicts +
+      chips('snipes', 'all', [['all', 'All ' + all], ['today', 'Ending in 24h'], ['play', 'Still in play'], ['over', 'Over your max'],
+        ...(n ? [['long_shot', '🎲 Long shots'], ['steal', '💎 Discounts']] : [])]) +
       `<div style="padding-top:8px"></div>` +
       (snipes.length ? snipes.map(snipeRow).join('') : empty(show === 'all' ? 'No snipes scheduled.' : 'None.')) + `</div>`;
   }],

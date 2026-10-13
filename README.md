@@ -29,6 +29,7 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
 - **Slipped-through labels**: picks the bot calls a price mistake, a hidden listing or a sleeper auction carry a badge, rank first among equal deals, and have their own filter on the Picks tab.
 - **Two bids on every auction**: the bot's cheapskate max and a "to win" bid at about the going rate, each with its own copy button, plus "same card last sold for" from the bot's own record.
+- **A read on your Gixen amounts**: each scheduled snipe is marked over the going rate, fair, a real discount or a long shot, with what the card goes for and the bid it would take to win.
 - **Scorecard sensors**: how many sold prices the bot has on record, and what share of its picks went on to sell at or under its max, ready for a graph or an automation.
 - **A dashboard**: one card type with twenty-one panels (including a Top 10 deals ranking, the ten rarest cards for sale right now, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
