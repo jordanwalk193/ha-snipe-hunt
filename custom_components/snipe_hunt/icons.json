@@ -159,6 +159,9 @@
       "quiet_hours": {
         "default": "mdi:sleep"
       },
+      "bedtime_bundle": {
+        "default": "mdi:bed-clock"
+      },
       "gixen_enabled": {
         "default": "mdi:target"
       }
@@ -177,6 +180,9 @@
       },
       "extra_searches": {
         "default": "mdi:text-search"
+      },
+      "combined_ship_sellers": {
+        "default": "mdi:package-variant-closed-plus"
       }
     },
     "calendar": {

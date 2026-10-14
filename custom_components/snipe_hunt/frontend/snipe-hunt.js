@@ -152,7 +152,7 @@ const pickButtons = p => `<div class="row tight">
 // The second number next to the max: a bid at about the going rate, for a card
 // you would rather win than steal. Only the bot's newer versions send it.
 const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
-const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
+const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered${p.last_sold.estimated ? ' (shipping assumed)' : ''} on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
 const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // A small line chart of prices, oldest first.
 const spark = (values, color) => {
@@ -408,7 +408,9 @@ const PANELS = {
     `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">
       ${m.count} real auction results on record, ${m.count_7d} from the last 7 days. New picks are priced from these.<br>
       ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.${m.under_win == null ? '' : ` A snipe at the "to win" bid would have been in the running on ${m.under_win} of the ${m.calls}.`}` : 'None of the picked auctions has sold yet.'}
-      ${m.value_gap_pct == null ? '' : `<br>The going rate the bot gave was typically ${m.value_gap_pct}% away from the real delivered price.`}</div></div>`;
+      ${m.value_gap_pct == null ? '' : `<br>The going rate the bot gave was typically ${m.value_gap_pct}% away from the real delivered price.`}
+      ${(m.bands || []).filter(b => b.calls).map(b => `<br>Cards valued ${esc(b.band)}: ${b.calls} sold, final prices ran ${Math.abs(b.value_bias_pct)}% ${b.value_bias_pct > 0 ? 'above' : 'below'} the bot's going rate.`).join('')}
+      ${m.missed_steals ? `<br>Missed steals in the last 30 days: ${m.missed_steals} sold well under their usual price with no pick from the bot.` : ''}</div></div>`;
   }],
 
   sold: ['Sold prices', false, c => {
@@ -430,13 +432,13 @@ const PANELS = {
             <a class="title" href="${esc(x.url)}" target="_blank" rel="noopener" style="font-size:13px">${t ? t[0] + ' ' : ''}${esc(x.title)}</a>
             <div style="text-align:right;flex:none"><b style="font-size:15px">${money(x.price)}</b></div>
           </div>
-          <div class="muted" style="font-size:12px;margin-top:2px">${shipTxt(x)} · ${x.bids || 0} bid${x.bids === 1 ? '' : 's'} · sold ${ago(x.sold_at)}</div>
-          ${k ? `<div style="font-size:12px;margin-top:4px">${verdict}${k.value ? ` <span class="muted" style="white-space:nowrap">rated ${worth(k.value)} · went ${money(x.total)} delivered</span>` : ''}</div>` : ''}
+          <div class="muted" style="font-size:12px;margin-top:2px">${shipTxt(x)} · ${x.kind === 'bin' ? 'Buy It Now' : (x.bids || 0) + ' bid' + (x.bids === 1 ? '' : 's')} · sold ${ago(x.sold_at)}</div>
+          ${k ? `<div style="font-size:12px;margin-top:4px">${verdict}${k.value ? ` <span class="muted" style="white-space:nowrap">rated ${worth(k.value)} · went ${x.estimated ? 'about ' : ''}${money(x.total)} delivered${x.estimated ? ' (shipping assumed)' : ''}</span>` : ''}</div>` : ''}
         </div></div>`;
     };
     return `<div style="padding-top:6px">` +
       chips('sold_only', 'all', [['all', 'Every sale'], ['picked', 'Ones the bot picked']]) +
-      `<div class="muted" style="font-size:12px;margin:10px 0 2px">Final bids of auctions the bot watched, newest first. ${m.count} on record.</div>` +
+      `<div class="muted" style="font-size:12px;margin:10px 0 2px">Final bids of auctions the bot watched, and Buy It Nows that sold at their listed price, newest first. ${m.count} on record.</div>` +
       (shown.length ? shown.map(row).join('') : empty(only === 'picked' ? 'None of the picked auctions has sold yet.' : 'Nothing has sold yet.')) +
       (sold.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + sold.length, 'sold_limit', 'all', '#546e7a')}</div>`
         : (limit === 'all' && sold.length > 8 ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'sold_limit', 'page')}</div>` : '')) + `</div>`;
@@ -850,9 +852,9 @@ class SnipeHuntStrategy {
         section(heading('Settings', 'mdi:tune'), {
           type: 'entities', grid_options: {columns: 'full'},
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
-            ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['number', 'price_lookups'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'],
+            ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['number', 'price_lookups'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'], ['switch', 'bedtime_bundle'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
-            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches']]
+            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches'], ['text', 'combined_ship_sellers']]
             .map(([domain, key]) => id(domain, key))
             // A setting the bot doesn't expose is unavailable; leave it off the list.
             .filter(e => e && hass.states && hass.states[e] && hass.states[e].state !== 'unavailable')

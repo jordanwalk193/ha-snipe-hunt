@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import SnipeHuntConfigEntry
 from .entity import SnipeHuntSettingEntity
 
-TEXTS = ("sellers", "extra_searches")
+TEXTS = ("sellers", "extra_searches", "combined_ship_sellers")
 
 
 async def async_setup_entry(
@@ -19,7 +19,7 @@ async def async_setup_entry(
 
 
 class SnipeHuntText(SnipeHuntSettingEntity, TextEntity):
-    """A list the bot searches eBay with: watched sellers or extra search terms."""
+    """A list the bot works from: watched sellers, extra searches, sellers who combine shipping."""
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_native_max = 255

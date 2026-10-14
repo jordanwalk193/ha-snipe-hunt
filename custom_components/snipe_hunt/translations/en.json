@@ -254,6 +254,9 @@
       "quiet_hours": {
         "name": "Quiet hours"
       },
+      "bedtime_bundle": {
+        "name": "Bedtime bundle instead of overnight alerts"
+      },
       "gixen_enabled": {
         "name": "Read Gixen snipes"
       }
@@ -272,6 +275,9 @@
       },
       "extra_searches": {
         "name": "Extra searches"
+      },
+      "combined_ship_sellers": {
+        "name": "Sellers who combine shipping"
       }
     },
     "calendar": {
