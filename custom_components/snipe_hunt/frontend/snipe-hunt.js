@@ -604,6 +604,8 @@ const PANELS = {
       ${a.cost_month != null ? 'Claude: ' + money(a.cost_today) + ' today (' + (a.calls_today || 0) + ' calls), ' + money(a.cost_month) + ' this month.<br>' : ''}
       ${a.held_overnight ? a.held_overnight + ' alerts held for the morning.<br>' : ''}
       ${a.skipped ? a.skipped + ' picks hidden with Skip.<br>' : ''}
+      ${c.d.tuning && c.d.tuning.on === false ? 'Self-tuning is switched off.<br>' : ''}
+      ${((c.d.tuning || {}).log || []).slice(0, 5).map(t => 'Tuned ' + esc(t.name) + ' ' + t.old + ' → ' + t.new + ' on ' + esc(String(t.applied_at).slice(0, 10)) + ': ' + esc(t.status) + (t.note ? ' (' + esc(t.note) + ')' : '') + ', judged by ' + esc(t.metric) + '.<br>').join('')}
       ${last.at ? 'Last button: ' + esc(last.message) + ' (' + ago(last.at) + ')<br>' : ''}
       ${!feed.ok || age > 10 ? "⚠️ Home Assistant can't reach the bot; this is from " + ago(c.d.generated) + '.' : 'Read from the bot ' + ago(c.d.generated) + '.'}</div></div>`;
   }],
@@ -854,7 +856,7 @@ class SnipeHuntStrategy {
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
             ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['number', 'price_lookups'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'], ['switch', 'bedtime_bundle'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
-            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches'], ['text', 'combined_ship_sellers']]
+            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches'], ['text', 'combined_ship_sellers'], ['switch', 'self_tuning']]
             .map(([domain, key]) => id(domain, key))
             // A setting the bot doesn't expose is unavailable; leave it off the list.
             .filter(e => e && hass.states && hass.states[e] && hass.states[e].state !== 'unavailable')

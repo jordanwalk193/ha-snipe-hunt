@@ -162,6 +162,9 @@
       "bedtime_bundle": {
         "default": "mdi:bed-clock"
       },
+      "self_tuning": {
+        "default": "mdi:tune-vertical"
+      },
       "gixen_enabled": {
         "default": "mdi:target"
       }

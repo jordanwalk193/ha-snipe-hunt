@@ -12,7 +12,7 @@ from .coordinator import SnipeHuntConfigEntry
 from .entity import SnipeHuntSettingEntity
 
 SWITCHES = ("alerts_enabled", "alert_fire", "alert_green", "alert_cheap_yellow",
-            "quiet_hours", "bedtime_bundle", "gixen_enabled")
+            "quiet_hours", "bedtime_bundle", "gixen_enabled", "self_tuning")
 
 
 async def async_setup_entry(

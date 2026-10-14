@@ -24,7 +24,7 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 ## What you get
 
 - **Entities** on one "Snipe Hunt" device: live picks, what needs a snipe, the top pick, Gixen snipes and the next one to end, win rate, collection size and spend, budget left, what's waiting to be paid or filed, and bot health.
-- **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, which tiers alert, the minimum deal rating worth an alert, quiet hours, the bedtime bundle, watched sellers, extra searches, sellers who combine shipping). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
+- **Settings as entities**: whichever settings the bot exposes show up as switches, numbers, times and text boxes (monthly budget, the "needs a snipe" window, which tiers alert, the minimum deal rating worth an alert, quiet hours, the bedtime bundle, self-tuning, watched sellers, extra searches, sellers who combine shipping). A setting the bot doesn't expose shows as unavailable instead of pretending to work.
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed.
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
 - **Slipped-through labels**: picks the bot calls a price mistake, a hidden listing or a sleeper auction carry a badge, rank first among equal deals, and have their own filter on the Picks tab.

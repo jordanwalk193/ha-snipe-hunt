@@ -257,6 +257,9 @@
       "bedtime_bundle": {
         "name": "Bedtime bundle instead of overnight alerts"
       },
+      "self_tuning": {
+        "name": "Self-tuning"
+      },
       "gixen_enabled": {
         "name": "Read Gixen snipes"
       }
