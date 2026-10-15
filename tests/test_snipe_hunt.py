@@ -138,6 +138,27 @@ async def test_buttons_and_services_reach_the_bot(hass, entry, bot):
     assert len(bot.actions) == 3
 
 
+async def test_pick_feedback_reaches_the_bot_with_a_reason_and_note(hass, entry, bot):
+    await hass.services.async_call(
+        DOMAIN, "pick_feedback",
+        {"item_id": "111111111111", "reason": "overvalued", "note": "signed base, ~$25"},
+        blocking=True)
+    await hass.services.async_call(
+        DOMAIN, "pick_feedback", {"item_id": "111111111111", "reason": "good_pick"},
+        blocking=True)
+    assert bot.actions == [
+        {"action": "feedback", "item_id": "111111111111", "reason": "overvalued",
+         "note": "signed base, ~$25"},
+        {"action": "feedback", "item_id": "111111111111", "reason": "good_pick", "note": ""},
+    ]
+    for bad in ({"item_id": "111111111111", "reason": "meh"},
+                {"item_id": "111111111111", "reason": "other", "note": "x" * 201},
+                {"item_id": "x", "reason": "other"}):
+        with pytest.raises(Exception):   # refused before the bot sees it
+            await hass.services.async_call(DOMAIN, "pick_feedback", bad, blocking=True)
+    assert len(bot.actions) == 2
+
+
 async def test_new_picks_fire_an_event_once(hass, entry, bot):
     events = []
     hass.bus.async_listen(EVENT_NEW_PICK, events.append)

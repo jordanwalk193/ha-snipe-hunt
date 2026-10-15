@@ -148,6 +148,20 @@ const pickButtons = p => `<div class="row tight">
     ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
+  ${p.feedback === 'good_pick' ? pill('👍 Good call noted', '#43a047') : act('👍 Good call', {action: 'feedback', item_id: p.item_id, reason: 'good_pick'}, {busy: 'Saving…'})}
+  <span class="btn" role="button" data-do="fb" data-item="${esc(p.item_id)}">👎 Bad pick</span>
+</div>${fb.open === p.item_id ? feedbackForm(p) : ''}`;
+// "Bad pick": what was wrong, and an optional note. Sending it hides the pick and
+// scoring learns from it. Only one form is open at a time, and what is typed in
+// it survives the dashboard redrawing.
+const REASONS = [['overvalued', 'Overvalued'], ['wrong_card', 'Wrong card'], ['bad_seller', 'Bad seller'],
+  ['dont_want_this_type', "Don't want this type"], ['already_have', 'Already have it'], ['other', 'Other']];
+const fb = {open: null, reason: 'overvalued', note: ''};
+const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;border:1px solid var(--divider-color);border-radius:10px">
+  <div class="muted" style="font-size:12px;margin-bottom:6px">What was wrong with this pick?</div>
+  <div class="row tight">${REASONS.map(([value, label]) => `<span class="btn${fb.reason === value ? ' on' : ''}" role="button" data-do="fb-reason" data-value="${value}">${label}</span>`).join('')}</div>
+  <input data-fb-note type="text" maxlength="200" placeholder="Note (optional): e.g. signed base card, worth about $25" value="${esc(fb.note)}" style="width:100%;box-sizing:border-box;margin:6px 0;padding:8px 10px;border-radius:8px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color)">
+  <div class="row tight"><span class="btn" role="button" data-do="fb-send" data-item="${esc(p.item_id)}" style="background:#e53935;color:#fff">Send and hide</span><span class="btn" role="button" data-do="fb">Cancel</span></div>
 </div>`;
 // The second number next to the max: a bid at about the going rate, for a card
 // you would rather win than steal. Only the bot's newer versions send it.
@@ -654,7 +668,10 @@ class SnipeHuntCard extends HTMLElement {
     this.body = this.shadowRoot.getElementById('body');
     this.query = '';
     this.shadowRoot.addEventListener('click', ev => this.clicked(ev));
-    this.shadowRoot.addEventListener('input', ev => { if (ev.target.matches('input[data-search]')) this.find(ev.target); });
+    this.shadowRoot.addEventListener('input', ev => {
+      if (ev.target.matches('input[data-search]')) this.find(ev.target);
+      if (ev.target.matches('input[data-fb-note]')) fb.note = ev.target.value;
+    });
   }
 
   static getStubConfig() { return {panel: 'summary'}; }
@@ -707,6 +724,8 @@ class SnipeHuntCard extends HTMLElement {
       return;
     }
     if (this.shadowRoot.querySelector('[data-armed]')) return;   // mid two-tap confirm
+    const typing = this.shadowRoot.activeElement;
+    if (typing && typing.matches('input[data-fb-note]')) return;   // mid "bad pick" note
     const search = this.shadowRoot.activeElement && this.shadowRoot.activeElement.matches('input[data-search]')
       ? this.shadowRoot.activeElement : null;
     const caret = search ? [search.selectionStart, search.selectionEnd] : null;
@@ -757,6 +776,22 @@ class SnipeHuntCard extends HTMLElement {
     if (el.dataset.do === 'set') {
       try { localStorage.setItem('ws_' + el.dataset.key, el.dataset.value); } catch (e) { /* private mode */ }
       return feed.redraw();
+    }
+    if (el.dataset.do === 'fb') {
+      fb.open = el.dataset.item && fb.open !== el.dataset.item ? el.dataset.item : null;
+      fb.reason = 'overvalued'; fb.note = '';
+      return feed.redraw();
+    }
+    if (el.dataset.do === 'fb-reason') { fb.reason = el.dataset.value; return feed.redraw(); }
+    if (el.dataset.do === 'fb-send') {
+      const note = el.closest('.fb').querySelector('input[data-fb-note]');
+      const data = {item_id: el.dataset.item, reason: fb.reason, note: (note ? note.value : fb.note).slice(0, 200)};
+      fb.open = null; fb.note = '';
+      const row = el.closest('[data-row]'); if (row) row.style.display = 'none';
+      this._hass.callWS({type: DOMAIN + '/action', action: 'feedback', data})
+        .then(res => { this.toast(res.message); feed.redraw(); })
+        .catch(err => { this.toast((err && err.message) || 'That did not work'); feed.redraw(); });
+      return;
     }
     if (el.dataset.confirm && el.dataset.armed == null) {
       const label = el.textContent;

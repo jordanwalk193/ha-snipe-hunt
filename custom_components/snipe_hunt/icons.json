@@ -209,6 +209,9 @@
     "skip_pick": {
       "service": "mdi:eye-off-outline"
     },
+    "pick_feedback": {
+      "service": "mdi:thumbs-up-down-outline"
+    },
     "restore_skipped": {
       "service": "mdi:eye-refresh-outline"
     },

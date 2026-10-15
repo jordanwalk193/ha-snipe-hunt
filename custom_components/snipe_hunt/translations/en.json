@@ -81,6 +81,17 @@
         "green": "Value picks",
         "yellow": "Cheap new cards"
       }
+    },
+    "feedback_reason": {
+      "options": {
+        "overvalued": "Overvalued",
+        "wrong_card": "Wrong card",
+        "bad_seller": "Bad seller",
+        "dont_want_this_type": "Don't want this type",
+        "already_have": "Already have it",
+        "other": "Other",
+        "good_pick": "Good call"
+      }
     }
   },
   "entity": {
@@ -319,6 +330,24 @@
         "item_id": {
           "name": "eBay item number",
           "description": "The listing to hide."
+        }
+      }
+    },
+    "pick_feedback": {
+      "name": "Pick feedback",
+      "description": "Tells the bot a pick was wrong, and why (this hides it), or that it was a good call. Scoring learns from it.",
+      "fields": {
+        "item_id": {
+          "name": "eBay item number",
+          "description": "The pick the feedback is about."
+        },
+        "reason": {
+          "name": "Reason",
+          "description": "What was wrong with it, or good_pick for a good call."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional, up to 200 characters. Scoring reads it."
         }
       }
     },
