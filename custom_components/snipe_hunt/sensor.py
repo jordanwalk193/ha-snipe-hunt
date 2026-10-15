@@ -62,9 +62,10 @@ def _top_pick(data: Data) -> Data:
     Most deal stars first, then cards that slipped through the cracks, then the
     brag tier, then the most dollars saved. A
     one-star pick (about the going rate) and an auction already bid past its
-    max are never the top pick; a pick with no rating, from an older bot, can be.
+    max are never the top pick, and nor is a dear Buy It Now priced from a guess
+    ("unverified"); a pick with no rating, from an older bot, can be.
     """
-    good = [p for p in data["picks"] if p.get("tier") in TIER_RANK]
+    good = [p for p in data["picks"] if p.get("tier") in TIER_RANK and not p.get("unverified")]
     steals = sorted(
         (p for p in good if (p.get("deal") or 0) >= 2 and not (
             p.get("is_auction") and p.get("max") is not None

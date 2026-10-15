@@ -141,6 +141,12 @@
       },
       "price_lookups": {
         "default": "mdi:cash-search"
+      },
+      "estimate_bin_cap": {
+        "default": "mdi:help-circle-outline"
+      },
+      "min_seller_feedback": {
+        "default": "mdi:account-check-outline"
       }
     },
     "switch": {

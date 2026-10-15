@@ -48,7 +48,9 @@ async def test_top_pick_is_the_best_steal_and_never_a_one_star_pick(hass, entry,
         {**PICK, "item_id": "3", "card": "best", "deal": 4, "value": 40.0},
         {**PICK, "item_id": "4", "card": "bid past its max", "deal": 5, "value": 90.0,
          "bid_now": 20.0},
-        {**PICK, "item_id": "5", "card": "cheap card", "tier": "yellow", "deal": 5}]
+        {**PICK, "item_id": "5", "card": "cheap card", "tier": "yellow", "deal": 5},
+        {**PICK, "item_id": "6", "card": "guessed price", "tier": "green", "deal": 5,
+         "value": 99.0, "unverified": True, "is_auction": False}]
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
     assert state(hass, entry, "sensor", "top_pick").state == "best"
@@ -136,6 +138,18 @@ async def test_buttons_and_services_reach_the_bot(hass, entry, bot):
     with pytest.raises(Exception):   # not an item number: refused before the bot sees it
         await hass.services.async_call(DOMAIN, "skip_pick", {"item_id": "x"}, blocking=True)
     assert len(bot.actions) == 3
+
+
+async def test_guess_and_seller_settings_are_numbers(hass, entry, bot):
+    bot.snapshot["settings"].update(estimate_bin_cap=25.0, min_seller_feedback=100)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    cap = state(hass, entry, "number", "estimate_bin_cap")
+    assert cap.state == "25.0"
+    assert state(hass, entry, "number", "min_seller_feedback").state == "100"
+    await hass.services.async_call("number", "set_value",
+                                   {"entity_id": cap.entity_id, "value": 40}, blocking=True)
+    assert bot.settings[-1] == {"estimate_bin_cap": 40.0}
 
 
 async def test_pick_feedback_reaches_the_bot_with_a_reason_and_note(hass, entry, bot):

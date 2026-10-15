@@ -247,6 +247,12 @@
       },
       "price_lookups": {
         "name": "Sold-price lookups per run"
+      },
+      "estimate_bin_cap": {
+        "name": "Guessed Buy It Now alert limit"
+      },
+      "min_seller_feedback": {
+        "name": "Seller feedback to trust"
       }
     },
     "switch": {

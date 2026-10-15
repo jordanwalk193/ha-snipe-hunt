@@ -168,6 +168,11 @@ const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;bor
 const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
 const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered${p.last_sold.estimated ? ' (shipping assumed)' : ''} on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
 const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
+// The bot's doubts: a dear Buy It Now priced from a guess (never alerted), and a
+// seller with little feedback asking real money.
+const doubts = p => (p.unverified ? pill('⚠️ Unverified price', '#e65100') + ' ' : '')
+  + (p.new_seller ? pill('⚠️ New seller (' + p.seller_feedback + ' feedback)', '#e65100') + ' ' : '');
+const sellerTxt = p => esc(p.seller) + (p.seller_feedback == null ? '' : ` (${Number(p.seller_feedback).toLocaleString()} feedback${p.seller_pct == null ? '' : ', ' + p.seller_pct + '%'})`);
 // A small line chart of prices, oldest first.
 const spark = (values, color) => {
   if (!values || values.length < 2) return '';
@@ -178,7 +183,7 @@ const spark = (values, color) => {
 const pickRow = p => pickLine(p, '', '');
 const pickLine = (p, lead, extra) => {
   const t = TIER[p.tier] || ['•', '#546e7a'];
-  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})</span>`;
+  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})</span>`;
   const now = p.bid_now != null && Number(p.bid_now) !== Number(p.price) ? ` · <b>now ${money(p.bid_now)}</b>` : '';
   const ends = p.is_auction && p.end_time ? ` · ends ${when(p.end_time)}` : '';
   return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
@@ -188,11 +193,11 @@ const pickLine = (p, lead, extra) => {
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${t[0]} ${esc(p.card)}</a>
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
-      <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
       ${lastSold(p)}
-      <div class="muted" style="font-size:11px;margin-top:2px">${esc(p.seller)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
+      <div class="muted" style="font-size:11px;margin-top:2px">${sellerTxt(p)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
     </div></div>`;
 };
@@ -264,7 +269,7 @@ const PANELS = {
     // The best steal among the 🔥/🟢 picks, ones you haven't sniped first. A pick
     // rated one star (about the going rate) is never the top pick; a pick with
     // no rating at all, from an older bot, still can be.
-    const good = c.picks.filter(x => GOOD.includes(x.tier));
+    const good = c.picks.filter(x => GOOD.includes(x.tier) && !x.unverified);
     const ranked = [...steals(good), ...good.filter(x => x.deal == null)];
     const p = ranked.find(x => x.snipe == null) || ranked[0];
     if (!p) return empty(good.length
@@ -277,12 +282,12 @@ const PANELS = {
       <div style="flex:1;min-width:0">
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
-        <div style="font-size:15px">${edge(p)}${fastTag(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
-        ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${esc(p.max_basis || 'estimate')})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
+        <div style="font-size:15px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
+        ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
         ${lastSold(p)}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
-        <div class="muted" style="font-size:12px;margin-top:4px">${esc(p.seller)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
+        <div class="muted" style="font-size:12px;margin-top:4px">${sellerTxt(p)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
       </div></div>`;
   }],
