@@ -178,10 +178,22 @@ const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;bor
 // you would rather win than steal. Only the bot's newer versions send it.
 const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
 const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered${p.last_sold.estimated ? ' (shipping assumed)' : ''} on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
+// A graded card checked with its grader (the bot's slabs.py): the real grade and how many exist.
+const GRADER = {psa: 'PSA', beckett: 'BGS', sgc: 'SGC', cgc: 'CGC'};
+const slabTxt = p => {
+  const s = p.slab;
+  if (!s || !s.cert || s.problem || !s.found) return '';
+  const bits = [`${GRADER[s.grader] || ''} ${s.grade || ''}`.trim()];
+  if (s.pop != null) bits.push(`pop ${s.pop}` + (s.higher != null ? `, ${s.higher} higher` : ''));
+  if (s.total) bits.push(`${s.total} graded in all`);
+  const link = s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">cert ${esc(s.cert)}</a>` : '';
+  return `<div class="muted" style="font-size:12px;margin-top:2px">🏷️ ${esc(bits.join(' · '))}${link}</div>`;
+};
 const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // The bot's doubts: a dear Buy It Now priced from a guess (never alerted), and a
 // seller with little feedback asking real money.
 const doubts = p => (p.unverified ? pill('⚠️ Unverified price', '#e65100') + ' ' : '')
+  + (p.slab && p.slab.problem ? pill('⚠️ ' + esc(p.slab.problem), '#c62828') + ' ' : '')
   + (p.new_seller ? pill('⚠️ New seller (' + p.seller_feedback + ' feedback)', '#e65100') + ' ' : '');
 const sellerTxt = p => esc(p.seller) + (p.seller_feedback == null ? '' : ` (${Number(p.seller_feedback).toLocaleString()} feedback${p.seller_pct == null ? '' : ', ' + p.seller_pct + '%'})`);
 // A small line chart of prices, oldest first.
@@ -207,7 +219,7 @@ const pickLine = (p, lead, extra) => {
       <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
-      ${lastSold(p)}
+      ${lastSold(p)}${slabTxt(p)}
       <div class="muted" style="font-size:11px;margin-top:2px">${sellerTxt(p)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
     </div></div>`;
