@@ -414,6 +414,42 @@ const PANELS = {
       }).join('');
   }],
 
+  offers: ['Make an offer', false, c => {
+    // Buy It Nows that have sat a month or more with Best Offer on (the bot's offers.py).
+    // The bot only suggests an amount; you send the offer yourself on eBay.
+    const all = c.d.offers;
+    if (!all) return empty('Update the bot to see this: it needs a version that looks for stale listings.');
+    const priced = all.filter(o => o.value != null), top = (priced.length ? priced : all).slice(0, Number(c.card.config.count) || 10);
+    if (!top.length) return empty('No Buy It Now has sat a month with Best Offer on, on a card you don\'t own.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Up a month or more and taking offers: sellers who haven't sold often take well under the asking price. Offers are about 70% of the price, never more than 80% of what the card goes for, and never under half the price (those get declined). You send the offer on eBay.${priced.length < all.length ? ` ${all.length - priced.length} more are waiting for a going rate.` : ''}</div>` +
+      top.map(o => `<div class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
+        ${thumb(o, 54, 74)}
+        <div style="flex:1;min-width:0">
+          <a class="title" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)}</a>
+          <div style="font-size:13px;margin-top:3px">${pill('Offer ' + cents(o.offer), '#2e7d32')} asks ${money(o.price)} + ${shipTxt(o)}${o.value != null ? ` · goes for about <b>${money(o.value)}</b> <span class="muted">(${o.basis === 'sales' || o.basis === 'sold' ? 'sales' : 'estimate'})</span>` : ' · <span class="muted">no going rate yet</span>'}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px">${o.must_have ? '⭐ Must-have: ' + esc(o.must_have) + ' · ' : ''}listed ${o.days} days ago · ${esc(o.seller)}</div>
+          <div class="row tight">${linkBtn('Make offer ↗', o.url, '#1e88e5')}${copyBtn('Copy ' + cents(o.offer), cents(o.offer))}</div>
+        </div></div>`).join('');
+  }],
+
+  rainbows: ['Rainbows', false, c => {
+    // Every parallel of a card (the bot's rainbow.md): owned, for sale now, live picks.
+    const all = c.d.rainbows;
+    if (!all) return empty('Update the bot to see this: it needs a version with rainbows.');
+    if (!all.length) return empty('No rainbows yet. Add a card to rainbow.md in the bot\'s repo.');
+    const def = all[0].card, r = all.find(x => x.card === store('rainbow', def)) || all[0];
+    const filter = store('rainbow_show', 'all');
+    const rows = r.parallels.filter(p => filter === 'all' || (filter === 'missing' ? !p.owned : p.for_sale > 0 && !p.owned));
+    return chips('rainbow', def, all.map(x => [x.card, `${x.card} (${x.owned}/${x.parallels.length})`]), r.card) +
+      chips('rainbow_show', 'all', [['all', 'All ' + r.parallels.length], ['missing', 'Missing ' + (r.parallels.length - r.owned)], ['sale', 'Missing and for sale ' + r.parallels.filter(p => !p.owned && p.for_sale).length]]) +
+      `<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-top:8px">` + rows.map(p => {
+        const color = p.owned ? '#2e7d32' : (p.pick ? '#c41e3a' : (p.for_sale ? '#1e88e5' : '#546e7a'));
+        return `<a href="${esc(p.pick ? p.pick.url : p.url)}" target="_blank" rel="noopener" style="display:block;text-decoration:none;color:inherit;padding:8px;border-radius:10px;border:1px solid ${color}88;background:${color}${p.owned ? '33' : '14'}">
+          <div style="font-weight:600;font-size:13px">${p.owned ? '✓ ' : ''}${esc(p.name)}${p.run ? ` <span class="muted">/${p.run}</span>` : ''}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${p.owned ? esc(p.owned.status) : (p.pick ? (TIER[p.pick.tier] || ['⭐'])[0] + ' Live pick ' + money(p.pick.total) : (p.for_sale ? p.for_sale + ' for sale from ' + money(p.cheapest) : 'none for sale'))}${p.where ? ' · ' + esc(p.where) : ''}</div></a>`;
+      }).join('') + `</div>` + (rows.length ? '' : empty('Nothing here.'));
+  }],
+
   moves: ['Price drops and relists', false, c => {
     const all = c.d.moves;
     if (!all) return empty('Update the bot to see this: it needs a version that watches prices.');
@@ -969,6 +1005,7 @@ class SnipeHuntStrategy {
         {...section(heading('Every live pick', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('all_picks')), column_span: 2},
         section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
         section(heading('Price drops and relists', 'mdi:trending-down'), panel('moves')),
+        section(heading('Make an offer', 'mdi:hand-coin'), panel('offers')),
         section(heading('Price history', 'mdi:chart-line'), panel('history')),
       ]},
       gixen: {title: 'Gixen', path: 'gixen', icon: 'mdi:target', sections: [
@@ -985,6 +1022,7 @@ class SnipeHuntStrategy {
         section(heading('To file in the binder', 'mdi:book-open-page-variant', id('sensor', 'to_file')), panel('to_file'),
           heading('On the way', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('on_the_way')),
         section(heading('Must-have cards', 'mdi:star-box-multiple'), panel('must_have')),
+        section(heading('Rainbows', 'mdi:looks'), panel('rainbows')),
         section(heading('Every card', 'mdi:magnify'), panel('binder')),
       ]},
       bot: {title: 'Bot', path: 'bot', icon: 'mdi:robot-outline', sections: [
