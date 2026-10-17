@@ -444,6 +444,30 @@ const PANELS = {
         </div></div>`).join('');
   }],
 
+  lowball: ['Lowball snipes', false, c => {
+    // Cheap auctions of $15+ cards, each with one low snipe (the bot's lowball.py).
+    // Set many of these in Gixen: most lose, a few win at a fraction of the price.
+    const lb = c.d.lowball;
+    if (!lb || !lb.targets) return empty('Update the bot to see this: it needs a version with lowball snipes.');
+    const rec = lb.record || {n: 0, won: 0}, pct = Math.round(lb.level * 100);
+    const how = lb.learned
+      ? `Snipes are ${pct}% of the going rate: of ${rec.n} auctions like these that ended, ${rec.won} would have been won at that.`
+      : `Snipes are ${pct}% of the going rate for now; after 30 auctions like these have ended (${rec.n} so far), the bot sets it where about 1 in 5 would have won.`;
+    const hrs = Object.entries(lb.hours || {}).filter(([, b]) => b.n >= 3);
+    const hourTxt = hrs.length ? `<div class="muted" style="font-size:12px;padding-bottom:6px">Ending time vs price: ${hrs.map(([h, b]) => `${(+h % 12) || 12}${+h < 12 ? 'am' : 'pm'} <b style="color:${b.median <= 0.8 ? '#2e7d32' : b.median >= 1.1 ? '#c62828' : 'inherit'}">${Math.round(b.median * 100)}%</b> (${b.n})`).join(' · ')}</div>` : '';
+    const top = lb.targets.slice(0, Number(c.card.config.count) || 15);
+    if (!top.length) return `<div class="muted" style="font-size:12px;padding:10px 0 6px">${how}</div>${hourTxt}` + empty('No auction of a $15+ card is under half its going rate right now.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Auctions ending within two days, still under half what the card goes for. ${how} You'll get a 🎯 Last call alert for any still under 30% with at most one bid in its last 3 hours.</div>${hourTxt}` +
+      top.map(t => `<div class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
+        ${thumb(t, 54, 74)}
+        <div style="flex:1;min-width:0">
+          <a class="title" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.title)}</a>
+          <div style="font-size:13px;margin-top:3px">${pill('Snipe ' + cents(t.snipe), '#2e7d32')} ${t.sniped ? pill('In Gixen', '#546e7a') + ' ' : ''}now ${money(t.price)} + ${shipTxt(t)} · ${t.bids} bid${t.bids === 1 ? '' : 's'} · goes for about <b>${money(t.value)}</b> <span class="muted">(${t.basis === 'sales' || t.basis === 'sold' ? 'sales' : 'estimate'})</span></div>
+          <div class="muted" style="font-size:12px;margin-top:2px">ends ${when(t.end_time)}${t.dead ? ' · 🌙 ' + esc(t.dead) : ''}${(t.overlooked || []).length ? ' · 👀 ' + esc(t.overlooked.join(', ')) : ''} · ${esc(t.seller)}</div>
+          <div class="row tight">${linkBtn('View ↗', t.url, '#1e88e5')}${copyBtn('Copy item #', t.item_id)}${copyBtn('Copy ' + cents(t.snipe), cents(t.snipe))}</div>
+        </div></div>`).join('');
+  }],
+
   rainbows: ['Rainbows', false, c => {
     // Every parallel of a card (the bot's rainbow.md): owned, for sale now, live picks.
     const all = c.d.rainbows;
@@ -1015,6 +1039,7 @@ class SnipeHuntStrategy {
       ]},
       picks: {title: 'Picks', path: 'picks', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Every live pick', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('all_picks')), column_span: 2},
+        section(heading('Lowball snipes', 'mdi:fish'), panel('lowball')),
         section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
         section(heading('Price drops and relists', 'mdi:trending-down'), panel('moves')),
         section(heading('Make an offer', 'mdi:hand-coin'), panel('offers')),

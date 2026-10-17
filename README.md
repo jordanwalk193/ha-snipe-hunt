@@ -82,6 +82,7 @@ accent: "#c41e3a"       # optional
 | `by_year` | The top steals for one card year at a time, with a chip for each year (`count:` changes the five) |
 | `must_have` | The nine must-have cards of each year, with a button per year: which you own, how many are for sale now and the cheapest, and any live pick among them (needs the bot's `musthave.md`) |
 | `offers` | Buy It Nows up a month or more with Best Offer on, with a suggested offer (about 70% of the price, under the going rate), on cards you don't own |
+| `lowball` | Auctions of $15+ cards ending within two days, still under half their going rate, each with a low snipe to set in Gixen; marks dead-hour endings and listings buyers skip, and shows how ending time affects price |
 | `rainbows` | Every parallel of the cards you chase, with a button per card: owned, for sale now, live picks (needs the bot's `rainbow.md`) |
 | `rarest` | The ten lowest print runs for sale right now (1/1s, then /5, /10…), read from the listing titles (`count:` changes the ten) |
 | `moves` | Sellers who blinked: Buy It Nows cut by 15% or more and unsold cards that came back (`count:` changes how many) |
