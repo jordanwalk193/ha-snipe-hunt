@@ -220,6 +220,12 @@ const snipeCheck = s => {
   return `<div style="font-size:12px;margin-top:3px"><span class="pill" style="background:${color}">${label}</span> ${text}</div>` +
     (k.note ? `<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.3">${esc(k.note)}</div>` : '');
 };
+// What else might be wrong with a snipe (snipecheck.doubts): the wrong card, one
+// you own, the same card sniped twice, a grader you skip, one the bot passed on.
+const DOUBT = {not_walker: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
+const doubtful = s => (s.doubts || []).length > 0 || (s.check && s.check.verdict === 'over');
+const snipeDoubts = s => (s.doubts || []).map(d =>
+  `<div style="font-size:12px;margin-top:3px">${pill('⚠️', DOUBT[d.kind] || '#fb8c00')} ${esc(d.text)}</div>`).join('');
 const snipeRow = s => {
   const diff = s.bot_max != null && s.max_bid != null ? Number(s.max_bid) - Number(s.bot_max) : null;
   const note = s.bot_max == null ? '' : ` · bot max ${cents(s.bot_max)}` + (diff > 0.005 ? ' (yours is higher)' : (diff < -0.005 ? ' (yours is lower)' : ''));
@@ -229,6 +235,7 @@ const snipeRow = s => {
       <a class="title" href="${esc(s.url)}" target="_blank" rel="noopener" style="min-width:0;${s.outbid ? 'opacity:.65' : ''}">${(TIER[s.tier] || [''])[0]} ${esc(s.title || s.item_id)}</a><span style="flex:none">${state}</span></div>
     <div class="muted" style="font-size:12px;margin-top:2px"><b style="color:var(--primary-text-color)">Snipe ${s.max_bid == null ? '?' : cents(s.max_bid)}</b> · bid now ${s.current_bid == null ? '?' : cents(s.current_bid)}${note}</div>
     ${snipeCheck(s)}
+    ${snipeDoubts(s)}
     <div class="muted" style="font-size:11px;margin-top:2px">${esc(s.seller)} · ${s.outbid ? 'ends in ' + left(s.end_time) : 'ends ' + when(s.end_time)} · ${esc(s.item_id)}</div>
     ${s.outbid ? `<div class="row tight">${copyBtn('Copy item #', s.item_id)}${s.bot_max != null && Number(s.bot_max) > Number(s.current_bid) ? copyBtn('Copy bot max ' + cents(s.bot_max), cents(s.bot_max)) : ''}${s.check && s.check.room && s.check.win != null && Number(s.check.win) > Number(s.current_bid) ? copyBtn('Copy win ' + cents(s.check.win), cents(s.check.win)) : ''}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>` : ''}
   </div>`;
@@ -527,11 +534,14 @@ const PANELS = {
     if (show === 'today') snipes = snipes.filter(s => msLeft(s.end_time) < 24 * HOUR);
     if (show === 'play') snipes = snipes.filter(s => !s.outbid);
     if (show === 'long_shot' || show === 'steal') snipes = snipes.filter(s => s.check && s.check.verdict === show);
+    if (show === 'flagged') snipes = snipes.filter(doubtful);
     const n = a.analysis;
+    const flagged = c.snipes.filter(doubtful).length;
     const verdicts = !n ? '' : `<div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5"><b style="color:var(--primary-text-color)">The bot's read on your amounts:</b> ` +
       [['steal', 'real discounts'], ['fair', 'fair bids'], ['long_shot', 'long shots'], ['over', 'over the going rate'], ['unknown', 'not priced yet']]
         .filter(([k]) => n[k]).map(([k, t]) => `<b style="color:${CHECK[k][1]}">${n[k]}</b> ${t}`).join(' · ') +
-      (n.worth ? `<br>The priced snipes still in play add up to ${money(n.committed)} at your maxes, on cards that go for about ${money(n.worth)} delivered.` : '') + `</div>`;
+      (n.worth ? `<br>The priced snipes still in play add up to ${money(n.committed)} at your maxes, on cards that go for about ${money(n.worth)} delivered.` : '') +
+      (n.flagged == null ? '' : `<br>${flagged ? `<b style="color:#e53935">⚠️ ${flagged} snipe${flagged === 1 ? '' : 's'} to look at</b>: over the going rate, or the wrong card, a card you own, sniped twice, a grader you skip, or one the bot passed on.` : '✅ No bad snipes: none is over the going rate, a card you own, sniped twice or the wrong player.'}`) + `</div>`;
     return `<div style="padding-top:10px">` + grid(3, [
       stat('SNIPES SET', all, '#6a1b9a', '🎯'),
       stat('STILL IN PLAY', '$' + Math.round(a.committed), '#1e88e5', '💰'),
@@ -540,7 +550,7 @@ const PANELS = {
       : `<div class="row" style="align-items:center;margin-top:10px"><span class="muted" style="font-size:12px">Read from Gixen ${ago(a.read_at)}.</span>${act('Re-read now', {action: 'gixen_refresh'}, {busy: 'Reading…'})}${linkBtn('Open Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>`) +
       verdicts +
       chips('snipes', 'all', [['all', 'All ' + all], ['today', 'Ending in 24h'], ['play', 'Still in play'], ['over', 'Over your max'],
-        ...(n ? [['long_shot', '🎲 Long shots'], ['steal', '💎 Discounts']] : [])]) +
+        ...(n ? [['long_shot', '🎲 Long shots'], ['steal', '💎 Discounts']] : []), ...(flagged ? [['flagged', '⚠️ To look at (' + flagged + ')']] : [])]) +
       `<div style="padding-top:8px"></div>` +
       (snipes.length ? snipes.map(snipeRow).join('') : empty(show === 'all' ? 'No snipes scheduled.' : 'None.')) + `</div>`;
   }],
