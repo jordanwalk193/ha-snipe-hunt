@@ -15,7 +15,22 @@ OPT_EVENT_TIERS = "event_tiers"
 OPT_REPORT_URL = "report_url"
 OPT_SOON_MINUTES = "ending_soon_minutes"
 
-TABS = ["today", "picks", "gixen", "collection", "bot"]
+TABS = ["tonight", "steals", "collection", "stats"]
+# Tabs before the 2.12 redesign, and the tab each one's panels moved to.
+OLD_TABS = {"today": "tonight", "picks": "steals", "gixen": "stats", "bot": "stats"}
+
+
+def upgrade_tabs(tabs: list[str]) -> list[str]:
+    """A saved tab list in today's names, in order, without repeats. The old
+    five-tab default becomes the new default."""
+    if list(tabs) == ["today", "picks", "gixen", "collection", "bot"]:
+        return list(TABS)
+    out: list[str] = []
+    for tab in tabs:
+        tab = OLD_TABS.get(tab, tab)
+        if tab in TABS and tab not in out:
+            out.append(tab)
+    return out or list(TABS)
 TIERS = ["fire", "green", "yellow"]
 DEFAULT_OPTIONS = {
     OPT_SCAN_INTERVAL: 30,

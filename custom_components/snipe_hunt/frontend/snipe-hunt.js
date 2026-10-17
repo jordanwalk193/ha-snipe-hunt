@@ -85,6 +85,8 @@ const copyBtn = (label, text) => `<span class="btn" role="button" data-do="copy"
 // A button that asks the bot to do something. `confirm` makes it a two-tap
 // button; `hide` removes the row it sits in straight away.
 const act = (label, data, o = {}) => `<span class="btn" role="button" data-do="act" data-payload="${arg(data)}"${o.busy ? ` data-busy="${esc(o.busy)}"` : ''}${o.confirm ? ` data-confirm="${esc(o.confirm)}"` : ''}${o.hide ? ' data-hide' : ''} style="${tint(o.color)}">${label}</span>`;
+// Moves to another tab of this dashboard, the way Home Assistant's own links do.
+const navBtn = (label, path, color) => `<span class="btn" role="button" data-do="nav" data-path="${esc(path)}" style="${tint(color)}">${label}</span>`;
 const setBtn = (label, key, value, color) => `<span class="btn" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}" style="${tint(color)}">${label}</span>`;
 const chips = (key, def, options, current = store(key, def)) => `<div class="row">` + options.map(([value, label]) =>
   `<span class="btn${current === value ? ' on' : ''}" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}">${label}</span>`).join('') + `</div>`;
@@ -245,7 +247,8 @@ const snipeCheck = s => {
 };
 // What else might be wrong with a snipe (snipecheck.doubts): the wrong card, one
 // you own, the same card sniped twice, a grader you skip, one the bot passed on.
-const DOUBT = {not_walker: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
+const DOUBT = {not_walker: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
+const SERIOUS_DOUBT = ['not_walker', 'owned', 'twice', 'grader', 'slab'];
 const doubtful = s => (s.doubts || []).length > 0 || (s.check && s.check.verdict === 'over');
 const snipeDoubts = s => (s.doubts || []).map(d =>
   `<div style="font-size:12px;margin-top:3px">${pill('⚠️', DOUBT[d.kind] || '#fb8c00')} ${esc(d.text)}</div>`).join('');
@@ -761,6 +764,75 @@ const PANELS = {
       <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}</span></span><b>${x.p ? money(x.p) : ''}</b></div>`).join('') + `</div>`;
   }],
 
+  todo: ['To do', true, c => {
+    // Everything that wants a tap from you, soonest first: snipes to set, lowball
+    // snipes worth a try, Gixen snipes to look at, sellers to pay, offers to send.
+    const items = [];
+    const row = (kind, color, o) => ({at: o.at || '9', html: `<div data-row class="line" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0">
+      ${o.item ? thumb(o.item, 40, 54) : ''}
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <span style="min-width:0">${pill(kind, color)} ${o.url ? `<a class="title" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)}</a>` : `<b>${esc(o.title)}</b>`}</span>
+          ${o.at ? `<span style="flex:none">${pill('⏱ ' + left(o.at), msLeft(o.at) < 2 * HOUR ? '#e53935' : (msLeft(o.at) < 12 * HOUR ? '#fb8c00' : '#546e7a'))}</span>` : ''}
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:3px;line-height:1.35">${o.line}</div>
+        <div class="row tight">${o.buttons}</div>
+      </div></div>`});
+    const needIds = new Set(c.need.map(p => p.item_id));
+    c.need.forEach(p => items.push(row('🎯 Snipe', '#6a1b9a', {item: p, at: p.end_time, url: p.url, title: (TIER[p.tier] || [''])[0] + ' ' + p.card,
+      line: `now ${money(p.bid_now ?? p.price)} + ${shipTxt(p)}${p.max != null ? ` · <b style="color:var(--primary-text-color)">max ${cents(p.max)}</b>` : ''}${p.deal ? ' · ' + deal(p) : ''}`,
+      buttons: copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy ' + cents(p.max), cents(p.max))) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') + act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})})));
+    const lb = ((c.d.lowball || {}).targets || []).filter(t => !t.sniped && !needIds.has(t.item_id) && msLeft(t.end_time) > 0 && msLeft(t.end_time) < c.windowMs);
+    const LOWBALL_MAX = 8;
+    lb.slice().sort((x, y) => x.share - y.share).slice(0, LOWBALL_MAX).forEach(t => items.push(row('🐟 Lowball', '#00838f', {item: t, at: t.end_time, url: t.url, title: t.title,
+      line: `now ${money(t.price)} + ${shipTxt(t)} · ${t.bids} bid${t.bids === 1 ? '' : 's'} · goes for ~${money(t.value)} · <b style="color:var(--primary-text-color)">snipe ${cents(t.snipe)}</b>${t.dead ? ' · 🌙 ' + esc(t.dead) : ''}`,
+      buttons: copyBtn('Copy item #', t.item_id) + copyBtn('Copy ' + cents(t.snipe), cents(t.snipe)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
+    // only what could cost you: the wrong card, one you own, a double, a bad slab, overpaying
+    const serious = x => (x.doubts || []).filter(d => SERIOUS_DOUBT.includes(d.kind));
+    c.snipes.filter(x => !x.outbid && (serious(x).length || (x.check && x.check.verdict === 'over'))).forEach(x => items.push(row('⚠️ Check snipe', '#e53935', {at: x.end_time, url: x.url, title: x.title || x.item_id,
+      line: [...serious(x).map(d => esc(d.text)), ...(x.check && x.check.verdict === 'over' ? [`over the going rate (~${money(x.check.value)})`] : [])].join(' · ') + ` · your snipe ${cents(x.max_bid)}`,
+      buttons: linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
+    c.snipes.filter(x => x.outbid && x.check && x.check.room && x.check.win != null && Number(x.check.win) > Number(x.current_bid)).forEach(x => items.push(row('📈 Outbid, still cheap', '#fb8c00', {at: x.end_time, url: x.url, title: x.title || x.item_id,
+      line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · to win ≈ ${cents(x.check.win)}`,
+      buttons: copyBtn('Copy item #', x.item_id) + copyBtn('Copy ' + cents(x.check.win), cents(x.check.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
+    (c.d.pipeline.unpaid || []).filter(g => /^pay/i.test(g.advice)).forEach(g => items.push(row('💳 Pay', '#1e88e5', {title: g.seller + ' · ' + money(g.total),
+      line: esc(g.advice), buttons: linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')})));
+    (c.d.offers || []).filter(o => o.value != null).slice(0, 3).forEach(o => items.push(row('🤝 Offer', '#2e7d32', {item: o, url: o.url, title: o.title,
+      line: `asks ${money(o.price)} + ${shipTxt(o)} · goes for ~${money(o.value)} · up ${o.days} days · <b style="color:var(--primary-text-color)">offer ${cents(o.offer)}</b>`,
+      buttons: linkBtn('Make offer ↗', o.url, '#1e88e5') + copyBtn('Copy ' + cents(o.offer), cents(o.offer))})));
+    if (c.d.pipeline.to_file) items.push(row('📥 File', '#8e24aa', {title: c.d.pipeline.to_file + ' delivered card' + (c.d.pipeline.to_file === 1 ? '' : 's') + ' to put in the binder',
+      line: 'Tap Filed on each one once it is in its page.', buttons: navBtn('Open Collection', 'collection')}));
+    items.sort((x, y) => x.at < y.at ? -1 : (x.at > y.at ? 1 : 0));
+    const more = lb.length - Math.min(lb.length, LOWBALL_MAX);
+    if (!items.length) return empty('✅ Nothing to do right now. New picks land here within the hour.');
+    const all = store('todo_limit', 'page') === 'all', shown = all ? items : items.slice(0, 12);
+    return `<div class="muted" style="font-size:12px;padding:10px 0 4px">${items.length} thing${items.length === 1 ? '' : 's'}, soonest first.${c.gixenOn ? '' : ' Gixen can\'t be read, so auctions you already sniped may show.'}</div>` +
+      shown.map(i => i.html).join('') +
+      (items.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + items.length, 'todo_limit', 'all', '#546e7a')}</div>`
+        : (all && items.length > 12 ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'todo_limit', 'page')}</div>` : '')) +
+      (more > 0 ? `<div class="line" style="padding-top:10px">${navBtn(more + ' more lowball snipes on Steals', 'steals')}</div>` : '');
+  }],
+
+  steals: ['Steals', true, c => {
+    // One list, many cuts: each chip draws one of the older panels.
+    const lb = (c.d.lowball || {}).targets, offers = (c.d.offers || []).filter(o => o.value != null);
+    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['under', 'Under $20', 'under'],
+      ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
+      ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
+      ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
+    const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
+    return `<div style="padding-top:6px"></div>` + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
+      PANELS[chosen[2]][2](c);
+  }],
+
+  incoming: ['Incoming', false, c => PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
+
+  missing: ["What's missing", false, c => {
+    const view = store('missing_view', 'must');
+    return `<div style="padding-top:6px"></div>` + chips('missing_view', 'must', [['must', '⭐ Must-haves'], ['rainbow', '🌈 Rainbows']], view) +
+      PANELS[view === 'rainbow' ? 'rainbows' : 'must_have'][2](c);
+  }],
+
   health: ['Bot health', true, c => {
     const a = c.d.status, last = c.d.last_action || {};
     const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
@@ -945,6 +1017,12 @@ class SnipeHuntCard extends HTMLElement {
     if (!el) return;
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
+    if (el.dataset.do === 'nav') {
+      const base = location.pathname.split('/').slice(0, 2).join('/');
+      history.pushState(null, '', base + '/' + el.dataset.path);
+      window.dispatchEvent(new CustomEvent('location-changed', {detail: {replace: false}}));
+      return;
+    }
     if (el.dataset.do === 'set') {
       remember(el.dataset.key, el.dataset.value);
       return feed.redraw();
@@ -1004,7 +1082,7 @@ window.customCards.push({
 
 // ----------------------------------------------------------------- strategy
 // dashboard:  strategy: {type: custom:snipe-hunt}
-// Optional:   tabs: [today, picks, ...]   (overrides the integration option)
+// Optional:   tabs: [tonight, steals, collection, stats]   (overrides the integration option)
 const panel = (name, extra) => ({type: 'custom:snipe-hunt-card', panel: name, ...extra});
 const heading = (text, icon, entity) => ({
   type: 'heading', heading: text, icon, heading_style: 'title',
@@ -1025,46 +1103,31 @@ class SnipeHuntStrategy {
     };
     const budget = id('number', 'monthly_budget');
     const VIEWS = {
-      today: {title: 'Today', path: 'today', icon: 'mdi:calendar-star', sections: [
+      tonight: {title: 'Tonight', path: 'tonight', icon: 'mdi:weather-night', sections: [
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
-        section(heading('Top 10 deals', 'mdi:podium-gold'), panel('top_deals')),
-        section(heading('Best under $20', 'mdi:cash'), panel('under')),
-        section(heading('Rookie steals', 'mdi:star-shooting'), panel('focus')),
-        section(heading('Top steals by year', 'mdi:calendar-range'), panel('by_year')),
-        section(heading('Rarest on eBay', 'mdi:diamond-stone'), panel('rarest')),
-        section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
-        section(heading('Needs a snipe', 'mdi:target-account', id('sensor', 'need_snipe')), panel('need_snipe')),
+        {...section(heading('To do', 'mdi:checkbox-marked-circle-outline', id('sensor', 'need_snipe')), panel('todo')), column_span: 2},
         section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),
           heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay')),
       ]},
-      picks: {title: 'Picks', path: 'picks', icon: 'mdi:cards-playing-outline', sections: [
-        {...section(heading('Every live pick', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('all_picks')), column_span: 2},
-        section(heading('Lowball snipes', 'mdi:fish'), panel('lowball')),
-        section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
-        section(heading('Price drops and relists', 'mdi:trending-down'), panel('moves')),
-        section(heading('Make an offer', 'mdi:hand-coin'), panel('offers')),
-        section(heading('Price history', 'mdi:chart-line'), panel('history')),
-      ]},
-      gixen: {title: 'Gixen', path: 'gixen', icon: 'mdi:target', sections: [
-        section(heading('Scheduled snipes', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),
-        section(heading('Good auctions with no snipe', 'mdi:target-account'), panel('gixen_gap')),
-        section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
-          ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
-            {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
+      steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
+        {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
       ]},
       collection: {title: 'Collection', path: 'collection', icon: 'mdi:cards', sections: [
         section(heading('Collection', 'mdi:cards', id('sensor', 'collection')), panel('collection'),
           budget ? {type: 'tile', entity: budget, name: 'Monthly budget', features: [{type: 'numeric-input', style: 'buttons'}], features_position: 'bottom', grid_options: {columns: 'full'}} : null,
           graph(240, ['month_spend'], 'Spend this month')),
-        section(heading('To file in the binder', 'mdi:book-open-page-variant', id('sensor', 'to_file')), panel('to_file'),
-          heading('On the way', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('on_the_way')),
-        section(heading('Must-have cards', 'mdi:star-box-multiple'), panel('must_have')),
-        section(heading('Rainbows', 'mdi:looks'), panel('rainbows')),
-        section(heading('Every card', 'mdi:magnify'), panel('binder')),
+        section(heading('Incoming', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('incoming')),
+        section(heading("What's missing", 'mdi:star-box-multiple'), panel('missing')),
+        section(heading('Every card', 'mdi:magnify'), panel('binder'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
-      bot: {title: 'Bot', path: 'bot', icon: 'mdi:robot-outline', sections: [
-        section(heading('Bot health', 'mdi:robot-outline'), panel('health')),
-        section(heading('Last 3 days', 'mdi:chart-line'), graph(72, ['listings', 'live_picks']), graph(72, ['status'])),
+      stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
+        section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
+        section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
+          ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
+            {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
+        section(heading('Every Gixen snipe', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),
+        section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Price history', 'mdi:chart-line'), panel('history')),
+        section(heading('Bot health', 'mdi:robot-outline'), panel('health'), heading('Last 3 days', 'mdi:chart-line'), graph(72, ['listings', 'live_picks']), graph(72, ['status'])),
         section(heading('Settings', 'mdi:tune'), {
           type: 'entities', grid_options: {columns: 'full'},
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
@@ -1078,7 +1141,12 @@ class SnipeHuntStrategy {
         }),
       ]},
     };
-    const tabs = (config.tabs || options.tabs || Object.keys(VIEWS)).filter(t => VIEWS[t]);
+    // Tab names from before the 2.12 redesign, as an older integration may still send them.
+    const OLD = {today: 'tonight', picks: 'steals', gixen: 'stats', bot: 'stats'};
+    const asked = config.tabs || options.tabs || Object.keys(VIEWS);
+    const upgraded = asked.join(',') === 'today,picks,gixen,collection,bot' ? Object.keys(VIEWS)
+      : [...new Set(asked.map(t => OLD[t] || t))];
+    const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || 'Snipe Hunt',
       views: (tabs.length ? tabs : Object.keys(VIEWS)).map(t => ({type: 'sections', max_columns: 3, ...VIEWS[t]})),

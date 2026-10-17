@@ -199,7 +199,7 @@ async def test_dashboard_websocket(hass, entry, bot, hass_ws_client):
     assert (await client.receive_json())["success"]
     event = (await client.receive_json())["event"]
     assert event["snapshot"]["picks"][0]["item_id"] == "111111111111"
-    assert event["options"]["accent"] == "#c41e3a" and event["options"]["tabs"][0] == "today"
+    assert event["options"]["accent"] == "#c41e3a" and event["options"]["tabs"][0] == "tonight"
 
     await client.send_json_auto_id(
         {"type": "snipe_hunt/action", "action": "skip", "data": {"item_id": "111111111111"}})
@@ -233,7 +233,7 @@ async def test_options_flow_and_unload(hass, entry):
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
     result = await hass.config_entries.options.async_configure(result["flow_id"], {
-        "scan_interval": 60, "tabs": ["today", "bot"], "picks_per_page": 10,
+        "scan_interval": 60, "tabs": ["tonight", "stats"], "picks_per_page": 10,
         "accent_color": [0, 0, 255], "event_tiers": ["fire"],
         "ending_soon_minutes": 45})
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -269,3 +269,10 @@ async def test_calendar_event_entity_and_ending_soon(hass, entry, bot, hass_clie
     new_pick = state(hass, entry, "event", "new_pick")
     assert new_pick.attributes["event_type"] == "green"
     assert new_pick.attributes["item_id"] == "666666666666"
+
+
+def test_old_tab_names_are_upgraded():
+    from custom_components.snipe_hunt.const import TABS, upgrade_tabs
+    assert upgrade_tabs(["today", "picks", "gixen", "collection", "bot"]) == TABS
+    assert upgrade_tabs(["collection", "gixen", "bot"]) == ["collection", "stats"]
+    assert upgrade_tabs(["nope"]) == TABS

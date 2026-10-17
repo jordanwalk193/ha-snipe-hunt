@@ -9,7 +9,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import OPT_ACCENT, OPT_PICKS_PER_PAGE, OPT_REPORT_URL, OPT_TABS
+from .const import OPT_ACCENT, OPT_PICKS_PER_PAGE, OPT_REPORT_URL, OPT_TABS, upgrade_tabs
 from .coordinator import SnipeHuntCoordinator, options
 from .helpers import get_coordinator
 
@@ -21,7 +21,7 @@ def _card_options(coordinator: SnipeHuntCoordinator) -> dict[str, Any]:
     return {
         "accent": f"#{red:02x}{green:02x}{blue:02x}",
         "picks_per_page": int(opts[OPT_PICKS_PER_PAGE]),
-        "tabs": list(opts[OPT_TABS]),
+        "tabs": upgrade_tabs(opts[OPT_TABS]),
         "report_url": opts[OPT_REPORT_URL],
     }
 

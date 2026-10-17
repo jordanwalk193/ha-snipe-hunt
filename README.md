@@ -28,11 +28,11 @@ Snipe Hunt only recommends. Nothing in this integration can bid, buy, make an of
 - **Buttons and services**: search now, refresh, re-read Gixen, sign in to Gixen, restore skipped picks, send a test alert, skip a pick, mark cards filed, and give feedback on a pick (👎 Bad pick with a reason and note, which hides it; 👍 Good call, which keeps it) so the bot's scoring learns what you like.
 - **Deal ratings and running cost**: every pick shows one to five stars for how far under the going rate you would pay, and two sensors track what Claude has cost today and this month.
 - **The bot's doubts, shown**: a dear Buy It Now priced from a guess is flagged "⚠️ Unverified price" (and is never the top pick), a pick over $30 from a seller with little feedback is flagged "⚠️ New seller", every pick names its seller's feedback, and a max with no sales behind it reads "(guess, no sales found)".
-- **Slipped-through labels**: picks the bot calls a price mistake, a hidden listing or a sleeper auction carry a badge, rank first among equal deals, and have their own filter on the Picks tab.
+- **Slipped-through labels**: picks the bot calls a price mistake, a hidden listing or a sleeper auction carry a badge, rank first among equal deals, and have their own filter on the Steals tab.
 - **Two bids on every auction**: the bot's cheapskate max and a "to win" bid at about the going rate, each with its own copy button, plus "same card last sold for" from the bot's own record.
 - **A read on your Gixen amounts**: each scheduled snipe is marked over the going rate, fair, a real discount or a long shot, with what the card goes for and the bid it would take to win.
 - **Scorecard sensors**: how many sold prices the bot has on record, and what share of its picks went on to sell at or under its max, ready for a graph or an automation.
-- **A dashboard**: one card type with twenty-four panels (including a Top 10 deals ranking, the best steals under $20, rookie steals, the top steals for each card year, the ten rarest cards for sale right now, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in five tabs. No other custom cards are needed.
+- **A dashboard**: one card type with twenty-nine panels (including a Top 10 deals ranking, the best steals under $20, rookie steals, the top steals for each card year, the ten rarest cards for sale right now, real sold prices and a scorecard of how the bot's picks turned out), and a dashboard strategy that lays them out in four tabs: **Tonight** (a single to-do list of snipes to set, lowball snipes, Gixen snipes to check, sellers to pay and offers to send, soonest first), **Steals** (one list with a chip per cut: best, under $20, rookies, by year, rarest, lowball, offers, price drops, every pick), **Collection** (incoming cards, must-haves and rainbows, every card, the want list) and **Stats & bot**. No other custom cards are needed.
 - **An auctions calendar**: when each Gixen snipe ends, and good auctions that still have no snipe.
 - **Automation hooks**: a "New pick" event entity (and the raw `snipe_hunt_new_pick` event), plus an "Unsniped auction ending soon" sensor that turns on when a good auction with no snipe is about to end.
 
@@ -59,7 +59,7 @@ The tabs, their order, the accent colour and how many picks show before "Show al
 strategy:
   type: custom:snipe-hunt
   title: Cards
-  tabs: [today, picks, collection]
+  tabs: [tonight, steals, collection]
 ```
 
 ### Building your own layout
@@ -83,6 +83,10 @@ accent: "#c41e3a"       # optional
 | `must_have` | The nine must-have cards of each year, with a button per year: which you own, how many are for sale now and the cheapest, and any live pick among them (needs the bot's `musthave.md`) |
 | `offers` | Buy It Nows up a month or more with Best Offer on, with a suggested offer (about 70% of the price, under the going rate), on cards you don't own |
 | `lowball` | Auctions of $15+ cards ending within two days, still under half their going rate, each with a low snipe to set in Gixen; marks dead-hour endings and listings buyers skip, and shows how ending time affects price |
+| `todo` | Everything that wants a tap, soonest first: picks with no snipe, lowball snipes, Gixen snipes to check, auctions bid past your snipe but still cheap, sellers to pay now, offers to send, cards to file |
+| `steals` | One list with a chip for each cut: best, under $20, rookies, by year, rarest, lowball, offers, price drops, every pick |
+| `incoming` | On the way and delivered-to-file together |
+| `missing` | Must-have cards and rainbows, one chip each |
 | `rainbows` | Every parallel of the cards you chase, with a button per card: owned, for sale now, live picks (needs the bot's `rainbow.md`) |
 | `rarest` | The ten lowest print runs for sale right now (1/1s, then /5, /10…), read from the listing titles (`count:` changes the ten) |
 | `moves` | Sellers who blinked: Buy It Nows cut by 15% or more and unsold cards that came back (`count:` changes how many) |

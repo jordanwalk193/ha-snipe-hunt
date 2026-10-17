@@ -17,7 +17,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from .const import DOMAIN, FRONTEND_URL
+from .const import DOMAIN, FRONTEND_URL, OPT_TABS, upgrade_tabs
 from .coordinator import SnipeHuntConfigEntry, SnipeHuntCoordinator
 from .services import async_setup_services
 from .websocket import async_setup_websocket
@@ -53,6 +53,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> bool:
+    tabs = entry.options.get(OPT_TABS)
+    if tabs and upgrade_tabs(tabs) != list(tabs):   # saved before the tabs were renamed
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, OPT_TABS: upgrade_tabs(tabs)})
     coordinator = SnipeHuntCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

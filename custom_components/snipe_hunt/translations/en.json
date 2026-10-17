@@ -59,7 +59,7 @@
         "data_description": {
           "tabs": "Which tabs the Snipe Hunt dashboard strategy builds, in this order.",
           "event_tiers": "A snipe_hunt_new_pick event fires for each new pick in these tiers, for your own automations.",
-          "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Bot tab links to the latest one.",
+          "report_url": "Optional. A web address ending in / where the weekly reports can be read; the Stats & bot tab links to the latest one.",
           "ending_soon_minutes": "The \"Unsniped auction ending soon\" sensor turns on when a good auction with no snipe ends within this many minutes."
         }
       }
@@ -68,11 +68,10 @@
   "selector": {
     "tabs": {
       "options": {
-        "today": "Today",
-        "picks": "Picks",
-        "gixen": "Gixen",
+        "tonight": "Tonight",
+        "steals": "Steals",
         "collection": "Collection",
-        "bot": "Bot"
+        "stats": "Stats & bot"
       }
     },
     "tiers": {
