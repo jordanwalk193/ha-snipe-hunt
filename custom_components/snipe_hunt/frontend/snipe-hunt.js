@@ -75,8 +75,8 @@ const copyBtn = (label, text) => `<span class="btn" role="button" data-do="copy"
 // button; `hide` removes the row it sits in straight away.
 const act = (label, data, o = {}) => `<span class="btn" role="button" data-do="act" data-payload="${arg(data)}"${o.busy ? ` data-busy="${esc(o.busy)}"` : ''}${o.confirm ? ` data-confirm="${esc(o.confirm)}"` : ''}${o.hide ? ' data-hide' : ''} style="${tint(o.color)}">${label}</span>`;
 const setBtn = (label, key, value, color) => `<span class="btn" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}" style="${tint(color)}">${label}</span>`;
-const chips = (key, def, options) => `<div class="row">` + options.map(([value, label]) =>
-  `<span class="btn${store(key, def) === value ? ' on' : ''}" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}">${label}</span>`).join('') + `</div>`;
+const chips = (key, def, options, current = store(key, def)) => `<div class="row">` + options.map(([value, label]) =>
+  `<span class="btn${current === value ? ' on' : ''}" role="button" data-do="set" data-key="${esc(key)}" data-value="${esc(value)}">${label}</span>`).join('') + `</div>`;
 const shipTxt = p => p.shipping == null ? 'ship ?' : (p.shipping == 0 ? 'free ship' : money(p.shipping) + ' ship');
 // ★★★★☆ 42% under $25 value. For an auction that is at the bot's max, shipping included.
 const worth = v => '$' + (Number(v) >= 10 ? Math.round(v) : Number(v).toFixed(2));
@@ -323,6 +323,51 @@ const PANELS = {
             <div class="muted" style="font-size:11px;margin-top:3px">${esc(r.seller)}${r.is_auction && r.end_time ? ' · ends ' + when(r.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(r.item_id)}</b></div>
           </div></div>`;
       }).join('');
+  }],
+
+  focus: ['Rookie steals', true, c => {
+    // The parts of the market the bot hunts hardest: the player's rookie-year
+    // cards and, for some players, pre-rookie cards (groups come from the bot).
+    const groups = (c.d.focus || {}).groups;
+    if (!groups) return empty('Update the bot to see this: it needs a version that marks rookie cards.');
+    const pick = store('focus', groups[0].key), group = groups.find(g => g.key === pick) || groups[0];
+    const mine = c.picks.filter(p => p.focus === group.key);
+    const top = steals(mine).slice(0, Number(c.card.config.count) || 10);
+    return chips('focus', groups[0].key, groups.map(g => [g.key, esc(g.label) + ' (' + steals(c.picks.filter(p => p.focus === g.key)).length + ')']), group.key) +
+      `<div class="muted" style="font-size:12px;padding:8px 0 6px">${group.watched} ${esc(group.label)} listings watched · ${mine.length} live picks · ${top.length ? 'best steal first' : 'none 10% or more under the going rate yet'}.</div>` +
+      (top.length ? top.map((p, i) => pickLine(p,
+        `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
+        saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('')
+        : empty(mine.length ? 'The live picks here are all close to their going rate. They are on the Picks tab.' : 'No live picks here yet. The bot searches for these every hour.'));
+  }],
+
+  under: ['Best under $20', true, c => {
+    // Steals you can land for the cap or less delivered: the asking price for Buy
+    // It Now, the bot's max for an auction, shipping included ($5 when unknown).
+    const capAt = Number(c.card.config.under) || 20;
+    const pay = p => Number(p.is_auction ? p.max : p.price) + Number(p.shipping ?? 5);
+    const top = steals(c.picks.filter(p => !(p.is_auction && p.max == null) && pay(p) <= capAt)).slice(0, Number(c.card.config.count) || 10);
+    if (!top.length) return empty(`No live steal comes in at $${capAt} or less delivered right now.`);
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Steals for $${capAt} or less delivered: the Buy It Now price, or the max for an auction, plus shipping. Best steal first.</div>` +
+      top.map((p, i) => pickLine(p,
+        `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
+        ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${money(pay(p))} delivered</b>`)).join('');
+  }],
+
+  by_year: ['Top steals by year', true, c => {
+    // The best few steals for each card year, read from the listing titles.
+    if (!c.picks.some(p => 'year' in p)) return empty('Update the bot to see this: it needs a version that reads card years.');
+    const all = steals(c.picks.filter(p => p.year));
+    const years = [...new Set(all.map(p => p.year))].sort();
+    if (!years.length) return empty('No live pick is 10% or more under its going rate right now.');
+    const count = Number(c.card.config.count) || 5;
+    const def = all[0].year, chosen = years.includes(store('steal_year', def)) ? store('steal_year', def) : def;
+    const top = all.filter(p => p.year === chosen).slice(0, count);
+    return chips('steal_year', def, years.map(y => [y, y + ' (' + all.filter(p => p.year === y).length + ')']), chosen) +
+      `<div class="muted" style="font-size:12px;padding:8px 0 6px">Top ${count} steals on ${chosen} cards, best first.</div>` +
+      top.map((p, i) => pickLine(p,
+        `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
+        saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
   }],
 
   moves: ['Price drops and relists', false, c => {
@@ -861,6 +906,9 @@ class SnipeHuntStrategy {
       today: {title: 'Today', path: 'today', icon: 'mdi:calendar-star', sections: [
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         section(heading('Top 10 deals', 'mdi:podium-gold'), panel('top_deals')),
+        section(heading('Best under $20', 'mdi:cash'), panel('under')),
+        section(heading('Rookie steals', 'mdi:star-shooting'), panel('focus')),
+        section(heading('Top steals by year', 'mdi:calendar-range'), panel('by_year')),
         section(heading('Rarest on eBay', 'mdi:diamond-stone'), panel('rarest')),
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
         section(heading('Needs a snipe', 'mdi:target-account', id('sensor', 'need_snipe')), panel('need_snipe')),
