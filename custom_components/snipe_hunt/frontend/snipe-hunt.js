@@ -59,7 +59,18 @@ const ago = iso => {
   if (m < 2880) return Math.floor(m / 60) + 'h ' + (m % 60) + 'm ago';
   return Math.floor(m / 1440) + ' days ago';
 };
-const store = (key, def) => { try { return localStorage.getItem('ws_' + key) ?? def; } catch (e) { return def; } };
+// Filter choices live in memory first, so the buttons work even where the browser
+// won't keep anything (a private window, strict privacy settings, some phone app
+// web views); localStorage only carries them over to the next visit.
+const memory = {};
+const store = (key, def) => {
+  if (key in memory) return memory[key];
+  try { return localStorage.getItem('ws_' + key) ?? def; } catch (e) { return def; }
+};
+const remember = (key, value) => {
+  memory[key] = value;
+  try { localStorage.setItem('ws_' + key, value); } catch (e) { /* not kept past this visit */ }
+};
 const arg = o => esc(JSON.stringify(o));
 
 const cap = text => `<div class="cap">${text}</div>`;
@@ -375,6 +386,32 @@ const PANELS = {
       top.map((p, i) => pickLine(p,
         `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
+  }],
+
+  must_have: ['Must-have cards', false, c => {
+    // The nine defining cards of each year (the bot's musthave.md): which you own,
+    // what is for sale now and whether one of them is a live pick.
+    const m = c.d.must_have;
+    if (!m || !m.years) return empty('Update the bot to see this: it needs a version with a must-have list.');
+    if (!m.years.length) return empty('The must-have list is empty. Add cards to musthave.md in the bot\'s repo.');
+    const def = (m.years.find(y => y.owned < y.cards.length) || m.years[0]).year;
+    const year = m.years.find(y => y.year === store('must_year', def)) || m.years.find(y => y.year === def);
+    const done = y => y.owned === y.cards.length ? ' ✓' : '';
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">You have <b style="color:var(--primary-text-color)">${m.owned}</b> of ${m.total}. Nine a year, one binder page each.</div>` +
+      chips('must_year', def, m.years.map(y => [y.year, `${y.year} (${y.owned}/${y.cards.length})${done(y)}`]), year.year) +
+      year.cards.map((k, i) => {
+        const have = k.owned ? pill('✓ ' + esc(k.owned.status), '#2e7d32') : pill('Missing', '#78909c');
+        const pick = k.pick ? ` ${pill((TIER[k.pick.tier] || ['⭐'])[0] + ' Live pick ' + money(k.pick.total), '#c41e3a')}` : '';
+        const sale = k.for_sale ? `${k.for_sale} for sale now, from <b style="color:var(--primary-text-color)">${money(k.cheapest)}</b> delivered` : 'none for sale right now';
+        return `<div class="line" style="display:flex;gap:12px;align-items:flex-start;padding:9px 0;${k.owned ? 'opacity:.75' : ''}">
+          <div class="rank" style="${!k.owned ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start"><b>${esc(k.card)}</b><span style="flex:none">${have}</span></div>
+            <div class="muted" style="font-size:12px;margin-top:2px">${esc(k.why)} · goes for ${esc(k.rate)}</div>
+            <div style="font-size:12px;margin-top:3px">${sale}${pick}</div>
+            <div class="row tight">${linkBtn('Search eBay ↗', k.url)}${k.pick ? linkBtn('Open the pick ↗', k.pick.url, '#c41e3a') : ''}</div>
+          </div></div>`;
+      }).join('');
   }],
 
   moves: ['Price drops and relists', false, c => {
@@ -837,7 +874,7 @@ class SnipeHuntCard extends HTMLElement {
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
     if (el.dataset.do === 'set') {
-      try { localStorage.setItem('ws_' + el.dataset.key, el.dataset.value); } catch (e) { /* private mode */ }
+      remember(el.dataset.key, el.dataset.value);
       return feed.redraw();
     }
     if (el.dataset.do === 'fb') {
@@ -947,6 +984,7 @@ class SnipeHuntStrategy {
           graph(240, ['month_spend'], 'Spend this month')),
         section(heading('To file in the binder', 'mdi:book-open-page-variant', id('sensor', 'to_file')), panel('to_file'),
           heading('On the way', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('on_the_way')),
+        section(heading('Must-have cards', 'mdi:star-box-multiple'), panel('must_have')),
         section(heading('Every card', 'mdi:magnify'), panel('binder')),
       ]},
       bot: {title: 'Bot', path: 'bot', icon: 'mdi:robot-outline', sections: [

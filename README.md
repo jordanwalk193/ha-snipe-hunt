@@ -80,6 +80,7 @@ accent: "#c41e3a"       # optional
 | `under` | The best steals you can land for $20 or less delivered: Buy It Now price or the bot's max, plus shipping (`under:` changes the $20, `count:` the ten) |
 | `focus` | Rookie steals: the player's rookie-year cards, plus any other group the bot marks (for Jordan Walker, 2019 Perfect Game), with a chip for each group (`count:` changes the ten) |
 | `by_year` | The top steals for one card year at a time, with a chip for each year (`count:` changes the five) |
+| `must_have` | The nine must-have cards of each year, with a button per year: which you own, how many are for sale now and the cheapest, and any live pick among them (needs the bot's `musthave.md`) |
 | `rarest` | The ten lowest print runs for sale right now (1/1s, then /5, /10…), read from the listing titles (`count:` changes the ten) |
 | `moves` | Sellers who blinked: Buy It Nows cut by 15% or more and unsold cards that came back (`count:` changes how many) |
 | `history` | Cards that have sold more than once, with a small price trend |
