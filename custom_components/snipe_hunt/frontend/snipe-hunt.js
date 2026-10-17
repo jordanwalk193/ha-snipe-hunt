@@ -421,10 +421,13 @@ const PANELS = {
   pay: ['To pay', false, c => {
     const unpaid = c.d.pipeline.unpaid || [];
     const adviceColor = t => t.startsWith('pay') ? '#e53935' : (t.startsWith('request') ? '#fb8c00' : '#546e7a');
-    if (!unpaid.length) return empty('✅ Nothing is waiting on payment.');
-    return `<div style="padding-top:4px"></div>` + unpaid.map(g => `<div class="line" style="padding:8px 0">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(g.seller)} · ${money(g.total)}</b>${pill(esc(g.advice.split(':')[0].split(',')[0]), adviceColor(g.advice))}</div>
-      <div class="muted" style="font-size:12px;line-height:1.35;margin-top:2px">${g.cards.map(esc).join('<br>')}</div>
+    // What your open Gixen snipes could still add, when the bot could read them.
+    const sn = c.d.pipeline.sniping;
+    const riding = sn && sn.count ? `<div class="muted" style="font-size:12px;padding:8px 0 2px">🎯 Also sniping: <b style="color:var(--primary-text-color)">${sn.count}</b> auction${sn.count === 1 ? '' : 's'}, up to <b style="color:var(--primary-text-color)">${money(sn.max_total)}</b> more if every one wins.</div>` : '';
+    if (!unpaid.length) return riding + empty('✅ Nothing is waiting on payment.');
+    return riding + `<div style="padding-top:4px"></div>` + unpaid.map(g => `<div class="line" style="padding:8px 0">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(g.seller)} · ${money(g.total)}</b><span style="flex:none">${g.snipes ? pill('🎯 ' + g.snipes + ' sniping', '#6a1b9a') + ' ' : ''}${pill(esc(g.advice.split(':')[0].split(',')[0]), adviceColor(g.advice))}</span></div>
+      <div class="muted" style="font-size:12px;line-height:1.35;margin-top:2px">${g.cards.map(esc).join('<br>')}${g.count > g.cards.length ? `<br>+ ${g.count - g.cards.length} more` : ''}</div>
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(g.advice)}</div></div>`).join('') +
       `<div style="margin-top:8px">${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>`;
   }],
