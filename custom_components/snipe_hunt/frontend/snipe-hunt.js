@@ -108,9 +108,17 @@ const saved = p => p.value == null ? 0 : Number(p.value) - (Number(p.is_auction 
 // Left out: picks with no rating, ones under 10% below value (one star), and
 // auctions already bid past the bot's max.
 const TIER_RANK = {fire: 0, green: 1, yellow: 2};
+// Sweep focus (the bot's sweep.toml): why a pick is worth a look, what it costs
+// delivered, and its sweep score. Highest score first, then the cheapest delivered.
+const LABEL = {ODDBALL: ['🦄 Oddball', '#00897b'], TYPO: ['✏️ Typo', '#5e35b1'], 'NEW-CARD': ['🆕 New card', '#2e7d32'],
+  AUTO: ['✍️ Auto', '#c62828'], 'LOW-NUMBERED': ['#️⃣ Low #', '#ef6c00']};
+const labelPills = p => (p.labels || []).filter(l => LABEL[l]).map(l => pill(LABEL[l][0], LABEL[l][1]) + ' ').join('');
+const delivered = p => p.landed ?? p.total;
+const bySweep = (x, y) => (y.sweep_score ?? -1e9) - (x.sweep_score ?? -1e9) || (delivered(x) ?? 1e9) - (delivered(y) ?? 1e9);
+const oldOrder = (x, y) => y.deal - x.deal || !EDGE[x.edge] - !EDGE[y.edge] || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x);
 const steals = picks => picks
   .filter(p => p.deal >= 2 && !(p.is_auction && p.max != null && Number(p.bid_now ?? p.price) > Number(p.max)))
-  .sort((x, y) => y.deal - x.deal || !EDGE[x.edge] - !EDGE[y.edge] || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x));
+  .sort((x, y) => (x.sweep_score != null && y.sweep_score != null ? bySweep(x, y) : oldOrder(x, y)));
 
 // What every panel gets: the snapshot plus a few views of it.
 const context = (card) => {
@@ -206,9 +214,11 @@ const spark = (values, color) => {
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="flex:none"><polyline fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p => p.join(',')).join(' ')}"/><circle cx="${pts[pts.length - 1][0]}" cy="${pts[pts.length - 1][1]}" r="3" fill="${color}"/></svg>`;
 };
 const pickRow = p => pickLine(p, '', '');
+const sweepTxt = p => (p.labels || p.landed != null) ? `<div style="font-size:12px;margin-top:3px">${labelPills(p)}<b>${money(delivered(p))} total</b>${p.sweep_score != null ? ` <span class="muted">· score ${p.sweep_score}</span>` : ''}</div>` +
+  (p.ship_note ? `<div style="font-size:12px;margin-top:2px;color:#ef6c00">⚠️ ${esc(p.ship_note)}</div>` : '') : '';
 const pickLine = (p, lead, extra) => {
   const t = TIER[p.tier] || ['•', '#546e7a'];
-  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})</span>`;
+  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'}${p.capped ? ', cut to fit your ceiling' : ''})</span>`;
   const now = p.bid_now != null && Number(p.bid_now) !== Number(p.price) ? ` · <b>now ${money(p.bid_now)}</b>` : '';
   const ends = p.is_auction && p.end_time ? ` · ends ${when(p.end_time)}` : '';
   return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
@@ -218,6 +228,7 @@ const pickLine = (p, lead, extra) => {
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${t[0]} ${esc(p.card)}</a>
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
+      ${sweepTxt(p)}
       <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -315,6 +326,7 @@ const PANELS = {
       <div style="flex:1;min-width:0">
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
+        ${sweepTxt(p)}
         <div style="font-size:15px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
         ${lastSold(p)}
@@ -328,7 +340,7 @@ const PANELS = {
   top_deals: ['Top 10 deals', true, c => {
     const top = steals(c.picks).slice(0, Number(c.card.config.count) || 10);
     if (!top.length) return empty('No live pick is 10% or more under its going rate right now.');
-    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Best steal first: most deal stars, then 🔥 before 🟢 before 🟡, then the most dollars under the going rate.</div>` +
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Highest sweep score first (tier, deal stars, oddball, typo and new-card boosts), then the cheapest delivered.</div>` +
       top.map((p, i) => pickLine(p,
         `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
@@ -555,7 +567,10 @@ const PANELS = {
     const tier = store('tier', 'all'), kind = store('kind', 'all'), cover = store('cover', 'all'), sort = store('sort', 'best'), limit = store('limit', 'page');
     let picks = c.picks.slice();
     const total = picks.length;
-    const edges = picks.filter(p => EDGE[p.edge]).length, why = store('why', 'all');
+    const edges = picks.filter(p => EDGE[p.edge]).length, why = store('why', 'all'), label = store('label', 'all');
+    const labelCount = l => picks.filter(p => (p.labels || []).includes(l)).length;
+    const labelChips = Object.keys(LABEL).filter(l => labelCount(l)).map(l => [l, LABEL[l][0] + ' (' + labelCount(l) + ')']);
+    if (label !== 'all') picks = picks.filter(p => (p.labels || []).includes(label));
     if (EDGE[why]) picks = picks.filter(p => p.edge === why);
     if (why === 'any') picks = picks.filter(p => EDGE[p.edge]);
     if (tier !== 'all') picks = picks.filter(p => p.tier === tier);
@@ -564,8 +579,9 @@ const PANELS = {
     if (c.gixenOn && cover === 'open') picks = picks.filter(p => p.is_auction && p.snipe == null);
     if (c.gixenOn && cover === 'sniped') picks = picks.filter(p => p.snipe != null);
     const end = p => p.is_auction && p.end_time ? p.end_time : '9';
+    if (sort === 'best' && picks.some(p => p.sweep_score != null)) picks.sort(bySweep);
     if (sort === 'ending') picks.sort((x, y) => end(x) < end(y) ? -1 : (end(x) > end(y) ? 1 : 0));
-    if (sort === 'cheap') picks.sort((x, y) => (x.total ?? 1e9) - (y.total ?? 1e9));
+    if (sort === 'cheap') picks.sort((x, y) => (delivered(x) ?? 1e9) - (delivered(y) ?? 1e9));
     if (sort === 'room') picks.sort((x, y) => room(y) - room(x));
     if (sort === 'deal') picks.sort((x, y) => (y.deal_pct ?? -1) - (x.deal_pct ?? -1));
     const shown = limit === 'all' ? picks : picks.slice(0, c.perPage);
@@ -573,8 +589,9 @@ const PANELS = {
       chips('tier', 'all', [['all', 'All tiers'], ['fire', '🔥 Brag'], ['green', '🟢 Value'], ['yellow', '🟡 Cheap']]) +
       chips('kind', 'all', [['all', 'All types'], ['auction', 'Auctions'], ['bin', 'Buy now / offer']]) +
       (edges || why !== 'all' ? chips('why', 'all', [['all', 'Any reason'], ['any', 'Slipped through the cracks (' + edges + ')'], ...Object.entries(EDGE).map(([k, v]) => [k, v[0]])]) : '') +
+      (labelChips.length || label !== 'all' ? chips('label', 'all', [['all', 'Any label'], ...labelChips]) : '') +
       (c.gixenOn ? chips('cover', 'all', [['all', 'Sniped or not'], ['open', 'No snipe yet'], ['sniped', '🎯 Sniped']]) : '') +
-      chips('sort', 'best', [['best', 'Best first'], ['deal', '★ Best deal'], ['ending', 'Ending soonest'], ['room', 'Most room'], ['cheap', 'Cheapest']]) +
+      chips('sort', 'best', [['best', 'Sweep score'], ['deal', '★ Best deal'], ['ending', 'Ending soonest'], ['room', 'Most room'], ['cheap', 'Cheapest']]) +
       `<div class="muted" style="font-size:12px;margin:10px 0 2px">Showing ${shown.length} of ${picks.length}${picks.length !== total ? ' (' + total + ' live picks in all)' : ''}</div>` +
       (shown.length ? shown.map(pickRow).join('') : empty('Nothing matches those filters.')) +
       (picks.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + picks.length, 'limit', 'all', '#546e7a')}</div>`
