@@ -200,6 +200,23 @@ const slabTxt = p => {
   return `<div class="muted" style="font-size:12px;margin-top:2px">🏷️ ${esc(bits.join(' · '))}${link}</div>`;
 };
 const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
+// How far an auction's bid has climbed toward the bot's max, and how old that bid
+// is (the bot reads good picks again in their last 3 hours). Past 80% it is
+// heating up: likely to go over by the end.
+const HEAT = 0.8;
+const heat = p => p.is_auction && p.max ? Number(p.bid_now ?? p.price) / Number(p.max) : null;
+const heatPill = p => (heat(p) ?? 0) >= HEAT ? pill('🔥 Heating up', '#e53935') + ' ' : '';
+const priceAge = p => p.price_at ? `<span class="muted" title="When eBay last gave this price"> · price ${ago(p.price_at)}</span>` : '';
+const bidBar = p => {
+  const h = heat(p);
+  if (h == null) return '';
+  const w = Math.max(3, Math.min(100, Math.round(h * 100)));
+  const color = h >= 1 ? '#e53935' : (h >= HEAT ? '#fb8c00' : '#43a047');
+  const bids = p.bids == null ? '' : ` · ${p.bids} bid${p.bids === 1 ? '' : 's'}`;
+  return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px" title="Bid now as a share of the bot's max">
+    <div class="bar" style="flex:1;max-width:220px;height:8px"><div style="width:${w}%;background:${color}"></div></div>
+    <span class="muted" style="white-space:nowrap">bid ${money(p.bid_now ?? p.price)} of ${cents(p.max)} max${bids}${priceAge(p)}</span></div>`;
+};
 // The bot's doubts: a dear Buy It Now priced from a guess (never alerted), and a
 // seller with little feedback asking real money.
 const doubts = p => (p.unverified ? pill('⚠️ Unverified price', '#e65100') + ' ' : '')
@@ -229,7 +246,8 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${edge(p)}${heatPill(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
       ${lastSold(p)}${slabTxt(p)}
@@ -258,8 +276,8 @@ const snipeCheck = s => {
 };
 // What else might be wrong with a snipe (snipecheck.doubts): the wrong card, one
 // you own, the same card sniped twice, a grader you skip, one the bot passed on.
-const DOUBT = {not_walker: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
-const SERIOUS_DOUBT = ['not_walker', 'owned', 'twice', 'grader', 'slab'];
+const DOUBT = {not_walker: '#e53935', not_player: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
+const SERIOUS_DOUBT = ['not_walker', 'not_player', 'owned', 'twice', 'grader', 'slab'];
 const doubtful = s => (s.doubts || []).length > 0 || (s.check && s.check.verdict === 'over');
 const snipeDoubts = s => (s.doubts || []).map(d =>
   `<div style="font-size:12px;margin-top:3px">${pill('⚠️', DOUBT[d.kind] || '#fb8c00')} ${esc(d.text)}</div>`).join('');
@@ -292,7 +310,12 @@ const PANELS = {
     const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
     const last = c.d.last_action || {};
     const fresh = last.at && Date.now() - new Date(last.at) < 10 * 60e3;
-    return `<div style="padding-top:10px">` + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + grid(4, [
+    // Gixen snipes that could cost you: the wrong card, one you own, a double, a bad
+    // slab, or an amount over the going rate. The details are in To do.
+    const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind))
+      || (x.check && x.check.verdict === 'over')));
+    const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
+    return `<div style="padding-top:10px">` + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -315,7 +338,8 @@ const PANELS = {
     // no rating at all, from an older bot, still can be.
     const good = c.picks.filter(x => GOOD.includes(x.tier) && !x.unverified);
     const ranked = [...steals(good), ...good.filter(x => x.deal == null)];
-    const p = ranked.find(x => x.snipe == null) || ranked[0];
+    // one you haven't sniped and that isn't already bid near its max, if there is one
+    const p = ranked.find(x => x.snipe == null && (heat(x) ?? 0) < HEAT) || ranked.find(x => x.snipe == null) || ranked[0];
     if (!p) return empty(good.length
       ? 'Nothing live is a real steal right now: every 🔥 and 🟢 pick is close to its going rate. They are all on the Picks tab.'
       : 'No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
@@ -327,7 +351,8 @@ const PANELS = {
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
         ${sweepTxt(p)}
-        <div style="font-size:15px">${edge(p)}${fastTag(p)}${doubts(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
+        <div style="font-size:15px">${edge(p)}${heatPill(p)}${fastTag(p)}${doubts(p)}${money(p.bid_now ?? p.price)} + ${shipTxt(p)} ${badge(p)}${sniped(p)}</div>
+        ${bidBar(p)}
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
         ${lastSold(p)}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
@@ -647,6 +672,21 @@ const PANELS = {
         : (limit === 'all' && sold.length > 8 ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'sold_limit', 'page')}</div>` : '')) + `</div>`;
   }],
 
+  missed: ['Missed steals', false, c => {
+    // Sales the bot made no pick for that closed far under the same card's usual
+    // price (sales.find_missed): where it is still blind, so you can say why.
+    const m = c.d.market;
+    if (!m || !m.missed) return empty('Update the bot to see this: it needs a version that records sold prices.');
+    if (!m.missed.length) return empty('No missed steals in the last 30 days: nothing sold well under its usual price without a pick.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 4px">Sold well under the usual price of the same card, and the bot made no pick. ${m.missed_steals} in the last 30 days, biggest discount first.</div>` +
+      m.missed.map(x => `<div class="line" style="padding:8px 0">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+          <a class="title" href="${esc(x.url)}" target="_blank" rel="noopener" style="font-size:13px;min-width:0">${esc(x.title)}</a>
+          <b style="flex:none;font-size:15px">${money(x.total)}</b></div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${pill(x.pct + '% under', '#43a047')} usual ${money(x.typical)} from ${x.n} sale${x.n === 1 ? '' : 's'} · ${x.kind === 'bin' ? 'Buy It Now' : 'auction'} · sold ${ago(typeof x.sold_at === 'number' ? new Date(x.sold_at * 1000).toISOString() : x.sold_at)}</div>
+      </div>`).join('');
+  }],
+
   wantlist: ['Want list', false, c => {
     const targets = c.d.wantlist || [];
     if (!targets.length) return empty("The want list is empty.");
@@ -836,7 +876,8 @@ const PANELS = {
     const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['under', 'Under $20', 'under'],
       ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
       ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
-      ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
+      ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
+      ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
     return `<div style="padding-top:6px"></div>` + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
       PANELS[chosen[2]][2](c);
