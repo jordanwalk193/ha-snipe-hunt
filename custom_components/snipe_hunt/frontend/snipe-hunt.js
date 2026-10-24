@@ -203,6 +203,28 @@ const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // How far an auction's bid has climbed toward the bot's max, and how old that bid
 // is (the bot reads good picks again in their last 3 hours). Past 80% it is
 // heating up: likely to go over by the end.
+// A jackpot (the bot's jackpot.py): a $20+ card for a sliver of its value. It gets
+// the loudest thing on the dashboard, because it won't be there for long.
+const jackpotPill = p => p.jackpot ? pill('🚨 JACKPOT', '#d50000') + ' ' : '';
+const jackpotPay = p => Number(p.bid_now ?? p.price) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const jackpotBanner = c => {
+  const live = (c.d.jackpots || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
+  if (!live.length) return '';
+  return live.slice(0, 3).map(p => {
+    const off = p.value ? Math.round(100 * (1 - jackpotPay(p) / p.value)) : null;
+    return `<div class="jackpot" data-row>
+      ${p.image ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none"><img src="${esc(p.image.replace('s-l225', 's-l500'))}" style="height:110px;border-radius:8px;display:block"></a>` : ''}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;letter-spacing:2px;font-weight:700">🚨 JACKPOT${p.is_auction ? ' · AUCTION ENDS ' + left(p.end_time).toUpperCase() : ' · BUY IT NOW'}</div>
+        <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:18px;font-weight:700;margin:3px 0;color:#fff">${esc(p.card)}</a>
+        <div style="font-size:16px"><b>${money(jackpotPay(p))}</b> delivered for a <b>${worth(p.value)}</b> card${off != null ? ` · <b>${off}% off</b>` : ''}</div>
+        <div style="font-size:13px;margin-top:3px;opacity:.9">${p.jackpot === 'sales' ? 'Value from recorded sales.' : 'Value is the bot\'s estimate: glance at the comps as you buy.'} You will not see it this cheap again.</div>
+        <div class="row tight" style="margin-top:8px">${p.is_auction
+          ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
+          : linkBtn(p.best_offer ? 'Buy now (has offers) ↗' : 'BUY NOW ↗', p.url, '#ffffff')}</div>
+      </div></div>`;
+  }).join('');
+};
 const HEAT = 0.8;
 const heat = p => p.is_auction && p.max ? Number(p.bid_now ?? p.price) / Number(p.max) : null;
 const heatPill = p => (heat(p) ?? 0) >= HEAT ? pill('🔥 Heating up', '#e53935') + ' ' : '';
@@ -246,7 +268,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${edge(p)}${heatPill(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -319,7 +341,7 @@ const PANELS = {
     // slab, or an amount over the going rate. The details are in To do.
     const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(x)));
     const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
-    return `<div style="padding-top:10px">` + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
+    return `<div style="padding-top:10px">` + jackpotBanner(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -883,7 +905,7 @@ const PANELS = {
       ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
-    return `<div style="padding-top:6px"></div>` + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
+    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
       PANELS[chosen[2]][2](c);
   }],
 
@@ -959,6 +981,12 @@ const STYLE = `
          background: var(--divider-color); color: var(--primary-text-color); }
   .btn.on { background: var(--primary-color); color: var(--text-primary-color, #fff); }
   .btn.busy { opacity: .45; pointer-events: none; }
+  .jackpot { display: flex; gap: 14px; align-items: center; margin: 0 0 12px; padding: 14px; border-radius: 16px;
+    color: #fff; background: linear-gradient(135deg, #d50000, #ff6d00); box-shadow: 0 0 0 0 rgba(213,0,0,.6);
+    animation: jackpot-pulse 1.6s ease-out infinite; }
+  .jackpot .btn { color: #d50000 !important; font-weight: 700; }
+  @keyframes jackpot-pulse { 0% { box-shadow: 0 0 0 0 rgba(213,0,0,.55); } 70% { box-shadow: 0 0 0 14px rgba(213,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(213,0,0,0); } }
+  @media (prefers-reduced-motion: reduce) { .jackpot { animation: none; } }
   .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--divider-color); }
   .warn { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #fb8c0022; border: 1px solid #fb8c0077; font-size: 12px; line-height: 1.7; }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
