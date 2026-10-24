@@ -213,9 +213,9 @@ const bidBar = p => {
   const w = Math.max(3, Math.min(100, Math.round(h * 100)));
   const color = h >= 1 ? '#e53935' : (h >= HEAT ? '#fb8c00' : '#43a047');
   const bids = p.bids == null ? '' : ` · ${p.bids} bid${p.bids === 1 ? '' : 's'}`;
-  return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px" title="Bid now as a share of the bot's max">
-    <div class="bar" style="flex:1;max-width:220px;height:8px"><div style="width:${w}%;background:${color}"></div></div>
-    <span class="muted" style="white-space:nowrap">bid ${money(p.bid_now ?? p.price)} of ${cents(p.max)} max${bids}${priceAge(p)}</span></div>`;
+  return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:4px;font-size:12px" title="Bid now as a share of the bot's max">
+    <div class="bar" style="flex:1 1 120px;max-width:220px;height:8px"><div style="width:${w}%;background:${color}"></div></div>
+    <span class="muted">bid ${money(p.bid_now ?? p.price)} of ${cents(p.max)} max${bids}${priceAge(p)}</span></div>`;
 };
 // The bot's doubts: a dear Buy It Now priced from a guess (never alerted), and a
 // seller with little feedback asking real money.
@@ -278,6 +278,11 @@ const snipeCheck = s => {
 // you own, the same card sniped twice, a grader you skip, one the bot passed on.
 const DOUBT = {not_walker: '#e53935', not_player: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
 const SERIOUS_DOUBT = ['not_walker', 'not_player', 'owned', 'twice', 'grader', 'slab'];
+// "Over the going rate" only counts when it costs real money: the bot itself stops
+// pushing it under $3 over (cheap going rates are too rough to act on).
+const OVER_MIN = 3;
+const costly = x => !!x.check && x.check.verdict === 'over' && x.check.value != null
+  && -x.check.pct / 100 * x.check.value >= OVER_MIN;
 const doubtful = s => (s.doubts || []).length > 0 || (s.check && s.check.verdict === 'over');
 const snipeDoubts = s => (s.doubts || []).map(d =>
   `<div style="font-size:12px;margin-top:3px">${pill('⚠️', DOUBT[d.kind] || '#fb8c00')} ${esc(d.text)}</div>`).join('');
@@ -312,8 +317,7 @@ const PANELS = {
     const fresh = last.at && Date.now() - new Date(last.at) < 10 * 60e3;
     // Gixen snipes that could cost you: the wrong card, one you own, a double, a bad
     // slab, or an amount over the going rate. The details are in To do.
-    const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind))
-      || (x.check && x.check.verdict === 'over')));
+    const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(x)));
     const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
     return `<div style="padding-top:10px">` + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
@@ -846,8 +850,8 @@ const PANELS = {
       buttons: copyBtn('Copy item #', t.item_id) + copyBtn('Copy ' + cents(t.snipe), cents(t.snipe)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
     // only what could cost you: the wrong card, one you own, a double, a bad slab, overpaying
     const serious = x => (x.doubts || []).filter(d => SERIOUS_DOUBT.includes(d.kind));
-    c.snipes.filter(x => !x.outbid && (serious(x).length || (x.check && x.check.verdict === 'over'))).forEach(x => items.push(row('⚠️ Check snipe', '#e53935', {at: x.end_time, url: x.url, title: x.title || x.item_id,
-      line: [...serious(x).map(d => esc(d.text)), ...(x.check && x.check.verdict === 'over' ? [`over the going rate (~${money(x.check.value)})`] : [])].join(' · ') + ` · your snipe ${cents(x.max_bid)}`,
+    c.snipes.filter(x => !x.outbid && (serious(x).length || costly(x))).forEach(x => items.push(row('⚠️ Check snipe', '#e53935', {at: x.end_time, url: x.url, title: x.title || x.item_id,
+      line: [...serious(x).map(d => esc(d.text)), ...(costly(x) ? [`over the going rate (~${money(x.check.value)})`] : [])].join(' · ') + ` · your snipe ${cents(x.max_bid)}`,
       buttons: linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
     c.snipes.filter(x => x.outbid && x.check && x.check.room && x.check.win != null && Number(x.check.win) > Number(x.current_bid)).forEach(x => items.push(row('📈 Outbid, still cheap', '#fb8c00', {at: x.end_time, url: x.url, title: x.title || x.item_id,
       line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · to win ≈ ${cents(x.check.win)}`,
