@@ -187,7 +187,17 @@ const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;bor
 // The second number next to the max: a bid at about the going rate, for a card
 // you would rather win than steal. Only the bot's newer versions send it.
 const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
-const lastSold = p => p.last_sold ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Same card last sold for <b style="color:var(--primary-text-color)">${money(p.last_sold.total)}</b> delivered${p.last_sold.estimated ? ' (shipping assumed)' : ''} on ${new Date(p.last_sold.at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'})}${p.last_sold.n > 1 ? ' · ' + p.last_sold.n + ' sales on record' : ''}</div>` : '';
+const lastSold = p => {
+  // The trust strip: the newest real sales of the same card, each one tappable, so a
+  // deal can be bought without opening anything else.
+  const ls = p.last_sold;
+  if (!ls) return p.value != null && p.max_basis !== 'sales' ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 No sales of this card on record: the value is an estimate.</div>` : '';
+  const day = at => new Date(at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'});
+  const comps = (ls.recent || [{total: ls.total, at: ls.at}]).map(r => r.url
+    ? `<a class="comp" href="${esc(r.url)}" target="_blank" rel="noopener">${money(r.total)} · ${day(r.at)}${r.kind === 'bin' ? ' BIN' : ''}</a>`
+    : `<span class="comp">${money(r.total)} · ${day(r.at)}</span>`).join('');
+  return `<div style="font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center"><span class="muted">🔨 Sold${ls.estimated ? ' (shipping assumed)' : ''}:</span>${comps}${ls.n > (ls.recent || [1]).length ? `<span class="muted">· ${ls.n} on record</span>` : ''}</div>`;
+};
 // A graded card checked with its grader (the bot's slabs.py): the real grade and how many exist.
 const GRADER = {psa: 'PSA', beckett: 'BGS', sgc: 'SGC', cgc: 'CGC'};
 const slabTxt = p => {
@@ -239,6 +249,53 @@ const bidNowList = c => {
         <div style="font-size:13px;margin-top:2px"><b>${money(p.pay)}</b> delivered for a <b>${worth(p.value)}</b> card · <b>${p.off_pct}% off</b> · ends ${left(p.end_time)}</div>
         <div class="row tight">${copyBtn('Copy item #', p.item_id)}${p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}${linkBtn('View ↗', p.url, '#1e88e5')}</div>
       </div></div>`).join('') + `</div>`;
+};
+// The steal radar (the bot's steals.radar): listings nearest a jackpot or bid-now line.
+const radarStatus = r => r.hot
+  ? `<b style="color:#d50000">${r.kind === 'jackpot' ? '🚨 JACKPOT NOW' : '⏱️ BID NOW'}</b>`
+  : r.in_range
+    ? `<b style="color:#2e7d32">In range</b> · turns hot ${r.opens_at ? when(r.opens_at) : 'soon'}`
+    : `<b>${money(r.gap)}</b> above the ${r.kind === 'jackpot' ? 'jackpot' : 'bid-now'} line`;
+const radarList = c => {
+  const all = (c.d.radar || []).filter(r => !(r.is_auction && r.end_time && msLeft(r.end_time) <= 0));
+  if (!all.length) return '';
+  const top = all.slice(0, Number(c.card.config.count) || 5);
+  return `<div class="radar">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="letter-spacing:1px">🎯 STEAL RADAR</b><span class="muted" style="font-size:11px">closest to a no-think buy</span></div>` +
+    top.map(r => {
+      // the bar fills as the price falls toward the line; full means buy now
+      const fill = Math.max(4, Math.min(100, Math.round(100 * r.line_pct / Math.max(r.share_pct, 1))));
+      const color = r.hot ? '#d50000' : r.in_range ? '#2e7d32' : fill >= 70 ? '#fb8c00' : '#1e88e5';
+      return `<div class="line${r.hot ? ' hotrow' : ''}" style="display:flex;gap:10px;align-items:center;padding:7px 0">
+        ${thumb(r, 40, 56)}
+        <div style="flex:1;min-width:0">
+          <a class="title" href="${esc(r.url)}" target="_blank" rel="noopener" style="font-size:13px">${esc(r.card)}</a>
+          <div style="font-size:12px;margin-top:1px"><b>${money(r.pay)}</b> for a <b>${worth(r.value)}</b> card · ${r.share_pct}% of value${r.is_auction && r.end_time ? ' · ends ' + left(r.end_time) : r.best_offer ? ' · takes offers' : ' · Buy It Now'}</div>
+          <div class="meter"><span style="width:${fill}%;background:${color}"></span></div>
+          <div style="font-size:11px;margin-top:1px">${radarStatus(r)}${r.max != null && r.is_auction ? ` · max ${cents(r.max)}` : ''}</div>
+        </div>
+        <div style="flex:none">${r.is_auction ? copyBtn('Copy #', r.item_id) : linkBtn('Buy ↗', r.url, '#2e7d32')}</div>
+      </div>`;
+    }).join('') + `</div>`;
+};
+// Buy It Nows a seller just cut into steal range (the bot's steals.drop_alert).
+const droppedList = c => {
+  const all = c.d.dropped || [];
+  if (!all.length) return '';
+  return `<div class="warn" style="margin:0 0 10px;padding:10px 12px;border-color:#2e7d32;background:#2e7d3218">
+    <div style="font-size:12px;letter-spacing:2px;font-weight:700;margin-bottom:4px">📉 JUST DROPPED INTO STEAL RANGE</div>` +
+    all.map(p => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0">
+      ${thumb(p, 40, 56)}
+      <div style="flex:1;min-width:0"><a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.card)}</a>
+        <div style="font-size:12px"><s class="muted">${money(p.was)}</s> → <b>${money(p.price)}</b> + ${shipTxt(p)} · goes for ${worth(p.value)}</div></div>
+      <div style="flex:none">${linkBtn(p.best_offer ? 'Buy (has offers) ↗' : 'BUY ↗', p.url, '#2e7d32')}</div></div>`).join('') + `</div>`;
+};
+// What the bought picks were worth against what was paid (steals.savings).
+const savingsLine = c => {
+  const s = c.d.savings;
+  if (!s || !s.all || !s.all.n) return '';
+  const m = s.month && s.month.n ? s.month : null;
+  return `<div class="savings">💰 You've saved <b>${worth((m || s.all).saved)}</b> ${m ? 'this month' : 'so far'} · paid <b>${(m || s.all).pct}%</b> of value on ${(m || s.all).n} card${(m || s.all).n === 1 ? '' : 's'}${s.best ? ` · best steal: ${esc(s.best.card.slice(0, 38))} for ${money(s.best.paid)} (worth ${worth(s.best.value)})` : ''}</div>`;
 };
 const HEAT = 0.8;
 const heat = p => p.is_auction && p.max ? Number(p.bid_now ?? p.price) / Number(p.max) : null;
@@ -356,7 +413,7 @@ const PANELS = {
     // slab, or an amount over the going rate. The details are in To do.
     const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(x)));
     const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
-    return `<div style="padding-top:10px">` + jackpotBanner(c) + bidNowList(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
+    return `<div style="padding-top:10px">` + jackpotBanner(c) + bidNowList(c) + droppedList(c) + savingsLine(c) + radarList(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -401,6 +458,39 @@ const PANELS = {
         <div class="muted" style="font-size:12px;margin-top:4px">${sellerTxt(p)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
       </div></div>`;
+  }],
+
+  radar: ['Steal radar', true, c => {
+    if (!c.d.radar) return empty('Update the bot to see this: it needs a version with the steal radar.');
+    const html = radarList({...c, card: {...c.card, config: {...c.card.config, count: c.card.config.count || 10}}});
+    return html ? `<div style="padding-top:8px">${html}</div><div class="muted" style="font-size:12px;margin-top:6px">A jackpot is a $20+ card at 20% of its value or less (12% when the value is a guess); bid now is an auction in its last hour at 10% or less. The bar fills as the price falls toward the line.</div>`
+      : empty('Nothing is near a jackpot or bid-now line right now.');
+  }],
+
+  bundles: ['Seller bundles', false, c => {
+    // Picks from one seller added up (steals.bundles): shipping once where the seller combines it.
+    const all = c.d.bundles;
+    if (!all) return empty('Update the bot to see this: it needs a version with seller bundles.');
+    if (!all.length) return empty('No seller has two or more live picks right now.');
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Two or more picks from one seller, at each auction's max. Sellers that combine shipping charge it once; ask the others to combine before you pay.</div>` +
+      all.map(b => `<div class="bundle${b.share_pct != null && b.share_pct <= 50 ? ' good' : ''}">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+          <b>📦 ${esc(b.seller)} · ${b.n} cards</b>${b.combined ? pill('Combines shipping', '#2e7d32') : pill('Ask to combine', '#78909c')}</div>
+        <div style="font-size:14px;margin-top:4px"><b>${money(b.total)}</b> delivered for <b>${worth(b.value)}</b> of cards · <b>${b.share_pct}%</b> of value · ${money(b.per_card)} a card${b.shipping_saved >= 0.5 ? ` · <b style="color:#2e7d32">${money(b.shipping_saved)} shipping saved</b>` : ''}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${b.first_end ? 'First ends ' + when(b.first_end) + ' · ' : ''}${money(b.saved)} under value if every snipe wins</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">${b.cards.map(k => `<a href="${esc(k.url)}" target="_blank" rel="noopener" title="${esc(k.card)}">${thumb(k, 34, 48)}</a>`).join('')}</div>
+        <div class="row tight" style="margin-top:6px">${b.gixen ? copyBtn('Copy ' + b.gixen.split('\n').length + ' snipes for Gixen', b.gixen) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : ''}${linkBtn('Seller ↗', 'https://www.ebay.com/sch/i.html?_ssn=' + encodeURIComponent(b.seller) + '&_nkw=jordan+walker', '#1e88e5')}</div>
+      </div>`).join('');
+  }],
+
+  savings: ['Savings', false, c => {
+    const s = c.d.savings;
+    if (!s) return empty('Update the bot to see this: it needs a version that adds up savings.');
+    if (!s.all || !s.all.n) return empty('No bought picks on record yet.');
+    const box = (label, t) => stat(label, worth(t.saved), '#2e7d32', '💰');
+    return `<div style="padding-top:10px">` + grid(2, [box('SAVED THIS MONTH', s.month || {saved: 0}), box('SAVED IN ALL', s.all)]) +
+      `<div class="muted" style="font-size:12px;margin-top:8px">${s.all.n} bought picks: paid ${money(s.all.paid)} for ${money(s.all.value)} of cards, ${s.all.pct}% of value. Value is the bot's going rate when it picked the card; paid is the price before shipping.</div>` +
+      (s.best ? `<div class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0;margin-top:6px">${s.best.image ? `<img src="${esc(s.best.image)}" style="height:74px;border-radius:6px">` : ''}<div><div class="muted" style="font-size:11px;letter-spacing:2px">🏆 BEST STEAL</div><b>${esc(s.best.card)}</b><div style="font-size:13px">${money(s.best.paid)} for a ${worth(s.best.value)} card · ${s.best.pct}% of value${s.best.date ? ' · ' + esc(s.best.date) : ''}</div></div></div>` : '') + `</div>`;
   }],
 
   top_deals: ['Top 10 deals', true, c => {
@@ -914,13 +1004,14 @@ const PANELS = {
   steals: ['Steals', true, c => {
     // One list, many cuts: each chip draws one of the older panels.
     const lb = (c.d.lowball || {}).targets, offers = (c.d.offers || []).filter(o => o.value != null);
-    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['under', 'Under $20', 'under'],
+    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['radar', '🎯 Radar', 'radar', (c.d.radar || []).length],
+      ['bundles', '📦 Bundles', 'bundles', (c.d.bundles || []).length], ['under', 'Under $20', 'under'],
       ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
       ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
       ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
-    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + bidNowList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
+    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + bidNowList(c) + droppedList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
       PANELS[chosen[2]][2](c);
   }],
 
@@ -1003,6 +1094,15 @@ const STYLE = `
   @keyframes jackpot-pulse { 0% { box-shadow: 0 0 0 0 rgba(213,0,0,.55); } 70% { box-shadow: 0 0 0 14px rgba(213,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(213,0,0,0); } }
   @media (prefers-reduced-motion: reduce) { .jackpot { animation: none; } }
   .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--divider-color); }
+  .radar { margin: 0 0 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--divider-color, #8884); background: linear-gradient(135deg, #1e88e512, transparent); }
+  .radar .hotrow { animation: jackpot-pulse 1.6s infinite; border-radius: 10px; }
+  .meter { height: 6px; border-radius: 3px; background: #8883; margin-top: 4px; overflow: hidden; }
+  .meter span { display: block; height: 100%; border-radius: 3px; }
+  .comp { padding: 1px 6px; border-radius: 8px; background: #8882; color: var(--primary-text-color); text-decoration: none; white-space: nowrap; }
+  .savings { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: #2e7d3218; border: 1px solid #2e7d3255; font-size: 13px; line-height: 1.5; }
+  .bundle { padding: 10px 12px; margin: 8px 0; border-radius: 12px; border: 1px solid var(--divider-color, #8884); }
+  .bundle.good { border-color: #2e7d32; background: #2e7d3212; }
+  @media (prefers-reduced-motion: reduce) { .radar .hotrow { animation: none; } }
   .warn { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #fb8c0022; border: 1px solid #fb8c0077; font-size: 12px; line-height: 1.7; }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
@@ -1227,6 +1327,7 @@ class SnipeHuntStrategy {
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
+        section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
           ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
             {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
