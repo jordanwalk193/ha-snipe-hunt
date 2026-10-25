@@ -225,6 +225,21 @@ const jackpotBanner = c => {
       </div></div>`;
   }).join('');
 };
+// Auctions ending within the hour at 10% of their value or less (the bot's bidnow.py).
+const bidNowList = c => {
+  const live = (c.d.bid_now || []).filter(p => p.end_time && msLeft(p.end_time) > 0);
+  if (!live.length) return '';
+  return `<div class="warn" style="margin:0 0 10px;padding:10px 12px">
+    <div style="font-size:12px;letter-spacing:2px;font-weight:700;margin-bottom:4px">⏱️ BID NOW, THINK LATER · ENDING WITHIN THE HOUR AT 90%+ OFF</div>
+    <div class="muted" style="font-size:12px;margin-bottom:4px">Cheap auctions get bid up in the last minutes: bid the max, not today's price.</div>` +
+    live.map(p => `<div class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0">
+      ${thumb(p, 46, 64)}
+      <div style="flex:1;min-width:0">
+        <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.card)}</a>
+        <div style="font-size:13px;margin-top:2px"><b>${money(p.pay)}</b> delivered for a <b>${worth(p.value)}</b> card · <b>${p.off_pct}% off</b> · ends ${left(p.end_time)}</div>
+        <div class="row tight">${copyBtn('Copy item #', p.item_id)}${p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}${linkBtn('View ↗', p.url, '#1e88e5')}</div>
+      </div></div>`).join('') + `</div>`;
+};
 const HEAT = 0.8;
 const heat = p => p.is_auction && p.max ? Number(p.bid_now ?? p.price) / Number(p.max) : null;
 const heatPill = p => (heat(p) ?? 0) >= HEAT ? pill('🔥 Heating up', '#e53935') + ' ' : '';
@@ -341,7 +356,7 @@ const PANELS = {
     // slab, or an amount over the going rate. The details are in To do.
     const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(x)));
     const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
-    return `<div style="padding-top:10px">` + jackpotBanner(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
+    return `<div style="padding-top:10px">` + jackpotBanner(c) + bidNowList(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -905,7 +920,7 @@ const PANELS = {
       ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
-    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
+    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + bidNowList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
       PANELS[chosen[2]][2](c);
   }],
 
