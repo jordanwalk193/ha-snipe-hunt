@@ -493,6 +493,24 @@ const PANELS = {
       (s.best ? `<div class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0;margin-top:6px">${s.best.image ? `<img src="${esc(s.best.image)}" style="height:74px;border-radius:6px">` : ''}<div><div class="muted" style="font-size:11px;letter-spacing:2px">🏆 BEST STEAL</div><b>${esc(s.best.card)}</b><div style="font-size:13px">${money(s.best.paid)} for a ${worth(s.best.value)} card · ${s.best.pct}% of value${s.best.date ? ' · ' + esc(s.best.date) : ''}</div></div></div>` : '') + `</div>`;
   }],
 
+  brag: ['Brag board', false, c => {
+    const b = c.d.brag;
+    if (!b) return empty('Update the bot to see this: it needs a version with the brag board.');
+    if (!b.card) return empty('Nothing bought yet. Buy a steal and it shows up here.');
+    const badges = (b.badges || []).map(x => `<span class="btn${x.count ? ' on' : ''}" title="${esc(x.rule)}" style="${x.count ? '' : 'opacity:.45'}">${esc(x.name)} ×${x.count}</span>`).join(' ');
+    const w = b.this_week || {n: 0, saved: 0};
+    return `<div style="padding-top:10px">` +
+      grid(2, [stat('STEAL STREAK', `${b.streak_weeks} wk${b.streak_weeks === 1 ? '' : 's'}`, '#ef6c00', '🔥'),
+               stat('THIS WEEK', w.n ? worth(w.saved) + ' under' : 'none yet', '#2e7d32', '🛒')]) +
+      `<div class="row" style="margin:10px 0 4px">${badges}</div>` +
+      (b.top || []).map((t, i) => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0">` +
+        `<div class="rank" style="${i === 0 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>` +
+        (t.image ? `<img src="${esc(t.image)}" style="height:44px;border-radius:4px">` : '') +
+        `<div style="flex:1;min-width:0"><b>${esc(t.card)}</b><div class="muted" style="font-size:12px">${money(t.paid)} for a ${worth(t.value)} card · <b style="color:var(--primary-text-color)">${t.off_pct}% off</b></div></div></div>`).join('') +
+      cap('BRAG CARD · SAFE TO SHARE (NO SELLERS OR ITEM NUMBERS)') +
+      `<pre class="brag">${esc(b.card)}</pre></div>`;
+  }],
+
   top_deals: ['Top 10 deals', true, c => {
     const top = steals(c.picks).slice(0, Number(c.card.config.count) || 10);
     if (!top.length) return empty('No live pick is 10% or more under its going rate right now.');
@@ -1099,6 +1117,7 @@ const STYLE = `
   .meter { height: 6px; border-radius: 3px; background: #8883; margin-top: 4px; overflow: hidden; }
   .meter span { display: block; height: 100%; border-radius: 3px; }
   .comp { padding: 1px 6px; border-radius: 8px; background: #8882; color: var(--primary-text-color); text-decoration: none; white-space: nowrap; }
+  .brag { white-space: pre-wrap; font-size: 13px; line-height: 1.5; padding: 10px 12px; margin: 4px 0 0; border-radius: 10px; background: var(--secondary-background-color, #8881); user-select: all; }
   .savings { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: #2e7d3218; border: 1px solid #2e7d3255; font-size: 13px; line-height: 1.5; }
   .bundle { padding: 10px 12px; margin: 8px 0; border-radius: 12px; border: 1px solid var(--divider-color, #8884); }
   .bundle.good { border-color: #2e7d32; background: #2e7d3212; }
@@ -1328,6 +1347,7 @@ class SnipeHuntStrategy {
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
+        section(heading('Brag board', 'mdi:trophy-award'), panel('brag')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
           ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
             {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
