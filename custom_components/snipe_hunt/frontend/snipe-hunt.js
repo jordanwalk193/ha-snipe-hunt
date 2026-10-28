@@ -402,7 +402,83 @@ const searchBtn = c => c.d.status.searching ? pill('Searching eBay…', '#1e88e5
 
 // ------------------------------------------------------------------- panels
 // name: [label, redraw every 30 s for the countdowns?, draw]
+// ------------------------------------------------------- tiles (Tonight strips)
+// What you would pay now, delivered: the asking price, or today's bid, plus shipping.
+const payNow = p => Number(p.bid_now ?? p.price) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const shareNow = p => p.value ? payNow(p) / Number(p.value) : null;
+const shareAtMax = p => p.value && p.max != null ? (Number(p.max) + (p.combined_ship ? 0 : Number(p.shipping ?? 5))) / Number(p.value) : null;
+const clockColor = ms => ms < HOUR ? '#e53935' : ms < 3 * HOUR ? '#fb8c00' : ms < 12 * HOUR ? '#f9a825' : '#546e7a';
+const offMeter = share => {
+  if (share == null) return '';
+  const off = Math.max(0, Math.min(100, Math.round(100 * (1 - share))));
+  const color = off >= 75 ? '#00c853' : off >= 50 ? '#43a047' : off >= 25 ? '#f9a825' : '#78909c';
+  return `<div class="meter" title="How far under its value you would pay, shipping included"><span style="width:${off}%;background:${color}"></span></div>`;
+};
+const tile = p => {
+  const ms = p.is_auction && p.end_time ? msLeft(p.end_time) : null;
+  const share = shareNow(p), off = share == null ? null : Math.round(100 * (1 - share));
+  const img = p.image ? p.image.replace('s-l225', 's-l500') : null;
+  const corner = ms != null
+    ? `<span class="clock" style="background:${clockColor(ms)}">⏱ ${left(p.end_time)}</span>`
+    : `<span class="clock" style="background:#1e88e5">${p.best_offer ? 'BUY / OFFER' : 'BUY NOW'}</span>`;
+  const hot = p.jackpot ? ' jp' : (ms != null && ms < HOUR ? ' hot' : '');
+  const buttons = p.is_auction
+    ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + copyBtn('Item #', p.item_id) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
+    : linkBtn(p.best_offer ? 'Buy / offer ↗' : 'Buy now ↗', p.url, '#1e88e5') + copyBtn('Item #', p.item_id);
+  return `<div class="tile${hot}" data-row>
+    <a class="tile-img" href="${esc(p.url)}" target="_blank" rel="noopener">
+      ${img ? `<img src="${esc(img)}" loading="lazy" alt="">` : '<div class="noimg">🃏</div>'}
+      ${corner}${off != null && off > 0 ? `<span class="off">-${off}%</span>` : ''}${p.jackpot ? '<span class="jptag">🚨 JACKPOT</span>' : ''}
+    </a>
+    <div class="tile-body">
+      <a class="title clamp" href="${esc(p.url)}" target="_blank" rel="noopener">${(TIER[p.tier] || [''])[0]} ${esc(p.card)}</a>
+      <div class="tile-price"><b>${money(payNow(p))}</b> <span class="muted">${p.is_auction ? 'now · w/ ship' : 'w/ ship'}</span></div>
+      <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}</div>
+      ${offMeter(share)}
+      ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : ''}
+      <div class="row tight">${buttons}</div>
+    </div></div>`;
+};
+const strip = (tiles, more) => `<div class="strip">${tiles.join('')}</div>` + (more || '');
+
+// Buy It Now steals at your steal line or better (max_share, else 60% of value),
+// the cheapest share of value first, jackpots on top.
+const buyLine = c => Math.min(Number(c.s.max_share) || 0.6, 0.6);
+const buyNowSteals = c => {
+  const live = c.picks.filter(p => !p.is_auction && p.value && !p.unverified && shareNow(p) <= buyLine(c));
+  const ids = new Set(live.map(p => p.item_id));
+  const jack = (c.d.jackpots || []).filter(p => !p.is_auction && !ids.has(p.item_id));
+  return [...jack, ...live].sort((x, y) => !!y.jackpot - !!x.jackpot || shareNow(x) - shareNow(y));
+};
+// Picked auctions still live and not bid past the max: soonest ending first, or best deal at max.
+const endingSoon = (c, order = 'soon') => c.picks
+  .filter(p => p.is_auction && p.end_time && msLeft(p.end_time) > 0 && !(room(p) < 0))
+  .sort(order === 'best'
+    ? (x, y) => (shareAtMax(x) ?? 9) - (shareAtMax(y) ?? 9) || (x.end_time < y.end_time ? -1 : 1)
+    : (x, y) => x.end_time < y.end_time ? -1 : 1);
+
 const PANELS = {
+  buy_now: ['Buy now, think later', true, c => {
+    const line = buyLine(c), all = buyNowSteals(c);
+    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * line)}% of its value or less right now. The bot checks every hour, and new ones push to your phone.`);
+    const n = Number(c.card.config.count) || 8;
+    return `<div class="muted strip-cap">${all.length} at ${Math.round(100 * line)}% of value or less, best first. Buy first, look closer after.</div>` +
+      strip(all.slice(0, n).map(tile), all.length > n ? `<div class="row">${navBtn(`${all.length - n} more on Steals`, 'steals')}</div>` : '');
+  }],
+
+  ending: ['Ending soonest', true, c => {
+    // Picked auctions, the soonest ending first (or the best deal at max first).
+    const order = store('ending_order', 'soon');
+    const live = endingSoon(c), sorted = endingSoon(c, order);
+    if (!live.length) return empty('No picked auctions are live right now.');
+    const n = Number(c.card.config.count) || 10;
+    const hour = live.filter(p => msLeft(p.end_time) < HOUR).length;
+    const unsniped = live.filter(p => p.snipe == null && msLeft(p.end_time) < c.windowMs).length;
+    return `<div class="strip-head">${chips('ending_order', 'soon', [['soon', '⏱ Soonest'], ['best', '💎 Best deal']], order)}
+      <div class="muted strip-cap">${live.length} live${hour ? ` · <b style="color:#e53935">${hour} in the last hour</b>` : ''}${c.gixenOn && unsniped ? ` · ${unsniped} with no snipe` : ''}</div></div>` +
+      strip(sorted.slice(0, n).map(tile), live.length > n ? `<div class="row">${navBtn(`All ${live.length} on Steals`, 'steals')}</div>` : '');
+  }],
+
   summary: ['Right now', true, c => {
     const a = c.d.status, pipe = c.d.pipeline;
     const over = c.snipes.filter(s => s.outbid);
@@ -413,7 +489,7 @@ const PANELS = {
     // slab, or an amount over the going rate. The details are in To do.
     const risky = c.snipes.filter(x => !x.outbid && ((x.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(x)));
     const banner = risky.length ? `<div class="warn" style="margin:0 0 10px;border-color:#e53935">⚠️ <b>${risky.length} snipe${risky.length === 1 ? '' : 's'} to check</b> before ${risky.length === 1 ? 'it ends' : 'they end'}: ${risky.slice(0, 3).map(x => esc((x.title || x.item_id).slice(0, 40))).join(' · ')}${risky.length > 3 ? ' …' : ''}. Details under To do.</div>` : '';
-    return `<div style="padding-top:10px">` + jackpotBanner(c) + bidNowList(c) + droppedList(c) + savingsLine(c) + radarList(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
+    return `<div style="padding-top:10px">` + savingsLine(c) + (c.d.demo ? `<div class="warn" style="margin:0 0 10px">Demo mode: these cards, prices and sellers are made up, and the buttons change nothing.</div>` : '') + banner + grid(4, [
       stat(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#e53935' : '#43a047', '🎯'),
       stat('OVER YOUR MAX', c.gixenOn ? over.length : '–', over.length ? '#fb8c00' : '#43a047', '📈'),
       stat('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), '#1e88e5', '💳'),
@@ -509,6 +585,22 @@ const PANELS = {
         `<div style="flex:1;min-width:0"><b>${esc(t.card)}</b><div class="muted" style="font-size:12px">${money(t.paid)} for a ${worth(t.value)} card · <b style="color:var(--primary-text-color)">${t.off_pct}% off</b></div></div></div>`).join('') +
       cap('BRAG CARD · SAFE TO SHARE (NO SELLERS OR ITEM NUMBERS)') +
       `<pre class="brag">${esc(b.card)}</pre></div>`;
+  }],
+
+  ending_list: ['Ending soon', true, c => {
+    const order = store('ending_order', 'soon'), all = endingSoon(c, order);
+    if (!all.length) return empty('No picked auctions are live right now.');
+    const n = Number(c.card.config.count) || 25;
+    return `<div class="strip-head">${chips('ending_order', 'soon', [['soon', '⏱ Soonest'], ['best', '💎 Best deal at max']], order)}
+      <div class="muted strip-cap">Picked auctions not yet bid past the max.</div></div>` +
+      all.slice(0, n).map(p => pickLine(p, '', '')).join('') + (all.length > n ? empty(`${all.length - n} more under Every pick.`) : '');
+  }],
+
+  buy_list: ['Buy now, think later', true, c => {
+    const all = buyNowSteals(c);
+    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * buyLine(c))}% of its value or less right now.`);
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Buy It Now at ${Math.round(100 * buyLine(c))}% of value or less, shipping included: the cheapest share first. Buy first, look closer after.</div>` +
+      all.map(p => pickLine(p, `<div class="rank" style="width:auto;padding:0 7px;border-radius:10px;color:#fff;background:#00a152">-${Math.round(100 * (1 - shareNow(p)))}%</div>`, '')).join('');
   }],
 
   top_deals: ['Top 10 deals', true, c => {
@@ -1022,7 +1114,9 @@ const PANELS = {
   steals: ['Steals', true, c => {
     // One list, many cuts: each chip draws one of the older panels.
     const lb = (c.d.lowball || {}).targets, offers = (c.d.offers || []).filter(o => o.value != null);
-    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['radar', '🎯 Radar', 'radar', (c.d.radar || []).length],
+    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length],
+      ['ending', '⏱ Ending soon', 'ending_list', endingSoon(c).length], ['buy', '⚡ Buy now', 'buy_list', buyNowSteals(c).length],
+      ['radar', '🎯 Radar', 'radar', (c.d.radar || []).length],
       ['bundles', '📦 Bundles', 'bundles', (c.d.bundles || []).length], ['under', 'Under $20', 'under'],
       ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
       ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
@@ -1122,6 +1216,38 @@ const STYLE = `
   .bundle { padding: 10px 12px; margin: 8px 0; border-radius: 12px; border: 1px solid var(--divider-color, #8884); }
   .bundle.good { border-color: #2e7d32; background: #2e7d3212; }
   @media (prefers-reduced-motion: reduce) { .radar .hotrow { animation: none; } }
+  .strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 10px; margin: 8px 0 4px; }
+  .strip-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; }
+  .strip-head .row { margin-top: 4px; }
+  .strip-cap { font-size: 12px; margin-top: 8px; }
+  .tile { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; min-width: 0;
+          background: var(--secondary-background-color, #8881); border: 1px solid var(--divider-color, #8884);
+          transition: transform .15s ease, box-shadow .15s ease; }
+  .tile:hover { transform: translateY(-2px); box-shadow: 0 6px 18px #0005; }
+  .tile.hot { border-color: #e53935; box-shadow: 0 0 0 1px #e5393588; }
+  .tile.jp { border-color: #d50000; animation: jackpot-pulse 1.6s ease-out infinite; }
+  .tile-img { position: relative; display: block; height: 0; padding-top: 80%; background: #0003; overflow: hidden; }
+  .tile-img img, .tile-img .noimg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tile-img img { object-fit: contain; display: block; }
+  .tile-img .noimg { display: flex; align-items: center; justify-content: center; font-size: 40px; }
+  .clock, .off, .jptag { position: absolute; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 10px;
+          box-shadow: 0 1px 4px #0006; }
+  .clock { top: 8px; left: 8px; }
+  .off { bottom: 8px; right: 8px; background: #00a152; font-size: 14px; }
+  .jptag { bottom: 8px; left: 8px; background: #d50000; }
+  .tile-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 3px; flex: 1; }
+  .tile-body .row { margin-top: auto; padding-top: 6px; }
+  .tile-body .btn { padding: 4px 9px; }
+  .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 13px; min-height: 2.5em; }
+  .tile-price { font-size: 18px; white-space: nowrap; }
+  .tile-price .muted { font-size: 12px; }
+  .tile-sub { font-size: 12px; }
+  @media (max-width: 600px) {
+    .strip { display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: 68%;
+             overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+    .tile { scroll-snap-align: start; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tile, .tile:hover { transition: none; transform: none; } .tile.jp { animation: none; } }
   .warn { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #fb8c0022; border: 1px solid #fb8c0077; font-size: 12px; line-height: 1.7; }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
@@ -1328,6 +1454,8 @@ class SnipeHuntStrategy {
     const budget = id('number', 'monthly_budget');
     const VIEWS = {
       tonight: {title: 'Tonight', path: 'tonight', icon: 'mdi:weather-night', sections: [
+        {...section(heading('Buy now, think later', 'mdi:lightning-bolt'), panel('buy_now')), column_span: 3},
+        {...section(heading('Ending soonest', 'mdi:timer-sand'), panel('ending')), column_span: 3},
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         {...section(heading('To do', 'mdi:checkbox-marked-circle-outline', id('sensor', 'need_snipe')), panel('todo')), column_span: 2},
         section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),
