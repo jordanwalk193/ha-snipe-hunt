@@ -404,7 +404,7 @@ const snipeCheck = s => {
 };
 // What else might be wrong with a snipe (snipecheck.doubts): the wrong card, one
 // you own, the same card sniped twice, a grader you skip, one the bot passed on.
-const DOUBT = {not_walker: '#e53935', not_player: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00'};
+const DOUBT = {not_walker: '#e53935', not_player: '#e53935', owned: '#e53935', twice: '#e53935', grader: '#e53935', slab: '#e53935', passed: '#fb8c00', seller: '#fb8c00', hot_seller: '#fb8c00'};
 const SERIOUS_DOUBT = ['not_walker', 'not_player', 'owned', 'twice', 'grader', 'slab'];
 // "Over the going rate" only counts when it costs real money: the bot itself stops
 // pushing it under $3 over (cheap going rates are too rough to act on).
