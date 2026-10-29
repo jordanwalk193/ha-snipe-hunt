@@ -10,6 +10,8 @@ from .const import DOMAIN
 from .helpers import get_coordinator
 
 ITEM_ID = vol.All(cv.string, vol.Match(r"^\d{9,14}$"))
+# Which bot, when more than one is set up: its config entry id or its name.
+ENTRY = vol.Optional("entry")
 # "Bad pick" reasons, then "good call". The bot checks these again and cleans the note.
 REASONS = ["overvalued", "wrong_card", "bad_seller", "dont_want_this_type",
            "already_have", "other", "good_pick"]
@@ -38,10 +40,13 @@ def async_setup_services(hass: HomeAssistant) -> None:
 
     async def handle(call: ServiceCall) -> ServiceResponse:
         action = SERVICES[call.service][0]
-        message = await get_coordinator(hass).async_action(action, **call.data)
+        data = dict(call.data)
+        coordinator = get_coordinator(hass, data.pop("entry", None))
+        message = await coordinator.async_action(action, **data)
         return {"message": message} if call.return_response else None
 
     for name, (_, schema) in SERVICES.items():
         hass.services.async_register(
-            DOMAIN, name, handle, schema=schema, supports_response=SupportsResponse.OPTIONAL
+            DOMAIN, name, handle, schema=schema.extend({ENTRY: cv.string}),
+            supports_response=SupportsResponse.OPTIONAL,
         )

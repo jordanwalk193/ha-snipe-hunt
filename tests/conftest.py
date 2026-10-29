@@ -61,9 +61,10 @@ class FakeBot:
         self.actions: list[dict] = []
         self.settings: list[dict] = []
         self.error: Exception | None = None
+        self.by_url: dict[str, FakeBot] = {}   # other pretend bots, by address
 
-    def __call__(self, *args, **kwargs) -> "FakeBot":
-        return self
+    def __call__(self, session, url: str = "", token: str = "") -> "FakeBot":
+        return self.by_url.get(url, self)
 
     async def async_snapshot(self) -> dict:
         if self.error:

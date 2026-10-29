@@ -15,8 +15,11 @@ const ebayUrl = d => 'https://www.ebay.com/sch/i.html?_nkw=' + encodeURIComponen
 const HOUR = 3600e3;
 
 // ---------------------------------------------------------------- data feed
-const feed = {
-  data: null, options: {}, ok: true, error: null,
+// One feed per bot. More than one bot can be set up (one per player or
+// collection); a card or dashboard names its bot with `entry` (the config
+// entry id or the bot's name). Without it, the first bot set up answers.
+const makeFeed = entry => ({
+  entry, data: null, options: {}, ok: true, error: null,
   cards: new Set(), connection: null, started: false,
   start(hass) {
     if (this.started && this.connection === hass.connection) return;
@@ -25,7 +28,7 @@ const feed = {
     hass.connection.subscribeMessage(msg => {
       this.data = msg.snapshot; this.options = msg.options || {}; this.ok = msg.ok; this.error = null;
       this.redraw();
-    }, {type: DOMAIN + '/subscribe'}).catch(err => {
+    }, {type: DOMAIN + '/subscribe', ...(this.entry ? {entry: this.entry} : {})}).catch(err => {
       this.error = (err && err.message) || 'Snipe Hunt is not set up';
       this.started = false;
       this.redraw();
@@ -33,6 +36,11 @@ const feed = {
     });
   },
   redraw() { this.cards.forEach(card => card.draw()); },
+});
+const feeds = {};
+const feedFor = entry => {
+  const key = String(entry || '').trim();
+  return feeds[key] || (feeds[key] = makeFeed(key));
 };
 
 // ------------------------------------------------------------------ helpers
@@ -123,7 +131,7 @@ const steals = picks => picks
 
 // What every panel gets: the snapshot plus a few views of it.
 const context = (card) => {
-  const d = feed.data, s = d.settings || {};
+  const feed = card.feed, d = feed.data, s = d.settings || {};
   const gixen = d.gixen || {};
   const gixenOn = !!gixen.available;
   const picks = (d.picks || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
@@ -1180,7 +1188,7 @@ const PANELS = {
     const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
     const label = {ok: 'Running', stale: 'No search in 2h+', failing: 'Failing: ' + (a.failing || []).join(', ')}[a.state] || a.state;
     const age = (Date.now() - new Date(c.d.generated)) / 60000;
-    const reports = feed.options.report_url;
+    const reports = c.card.feed.options.report_url;
     return `<div style="padding-top:10px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px">
       <div><span class="dot" style="width:10px;height:10px;background:${color}"></span><b>${esc(label)}</b></div>
@@ -1207,7 +1215,7 @@ const PANELS = {
       ${c.d.tuning && c.d.tuning.on === false ? 'Self-tuning is switched off.<br>' : ''}
       ${((c.d.tuning || {}).log || []).slice(0, 5).map(t => 'Tuned ' + esc(t.name) + ' ' + t.old + ' → ' + t.new + ' on ' + esc(String(t.applied_at).slice(0, 10)) + ': ' + esc(t.status) + (t.note ? ' (' + esc(t.note) + ')' : '') + ', judged by ' + esc(t.metric) + '.<br>').join('')}
       ${last.at ? 'Last button: ' + esc(last.message) + ' (' + ago(last.at) + ')<br>' : ''}
-      ${!feed.ok || age > 10 ? "⚠️ Home Assistant can't reach the bot; this is from " + ago(c.d.generated) + '.' : 'Read from the bot ' + ago(c.d.generated) + '.'}</div></div>`;
+      ${!c.card.feed.ok || age > 10 ? "⚠️ Home Assistant can't reach the bot; this is from " + ago(c.d.generated) + '.' : 'Read from the bot ' + ago(c.d.generated) + '.'}</div></div>`;
   }],
 };
 
@@ -1314,10 +1322,11 @@ class SnipeHuntCard extends HTMLElement {
       schema: [
         {name: 'panel', required: true, selector: {select: {mode: 'dropdown', options: Object.entries(PANELS).map(([value, p]) => ({value, label: p[0]}))}}},
         {name: 'title', selector: {text: {}}},
+        {name: 'entry', selector: {config_entry: {integration: DOMAIN}}},
         {name: 'accent', selector: {text: {}}},
         {name: 'picks_per_page', selector: {number: {min: 5, max: 200, step: 5, mode: 'box'}}},
       ],
-      computeLabel: s => ({panel: 'Panel', title: 'Title (optional)', accent: 'Accent colour, e.g. #c41e3a (optional)', picks_per_page: 'Picks before "Show all" (Every live pick panel)'}[s.name]),
+      computeLabel: s => ({panel: 'Panel', title: 'Title (optional)', entry: 'Bot (when more than one is set up)', accent: 'Accent colour, e.g. #c41e3a (optional)', picks_per_page: 'Picks before "Show all" (Every live pick panel)'}[s.name]),
     };
   }
 
@@ -1326,24 +1335,31 @@ class SnipeHuntCard extends HTMLElement {
       throw new Error('Set panel to one of: ' + Object.keys(PANELS).join(', '));
     }
     this.config = config;
+    const feed = feedFor(config.entry);
+    if (this.feed !== feed) {   // the card moved to another bot
+      if (this.feed) this.feed.cards.delete(this);
+      this.feed = feed;
+      if (this.isConnected) { feed.cards.add(this); if (this._hass) feed.start(this._hass); }
+    }
     this.draw();
   }
 
   set hass(hass) {
     this._hass = hass;
-    feed.start(hass);
+    if (this.feed) this.feed.start(hass);
   }
 
   connectedCallback() {
-    feed.cards.add(this);
-    if (this._hass) feed.start(this._hass);
+    if (!this.feed) this.feed = feedFor(this.config && this.config.entry);
+    this.feed.cards.add(this);
+    if (this._hass) this.feed.start(this._hass);
     clearInterval(this.timer);
     this.timer = setInterval(() => { if (this.config && PANELS[this.config.panel][1]) this.draw(); }, 30000);
     this.draw();
   }
 
   disconnectedCallback() {
-    feed.cards.delete(this);
+    this.feed.cards.delete(this);
     clearInterval(this.timer);
   }
 
@@ -1353,8 +1369,8 @@ class SnipeHuntCard extends HTMLElement {
   draw() {
     if (!this.config || !this.isConnected) return;
     const title = this.config.title ? `<div style="font-size:16px;font-weight:600;padding-top:10px">${esc(this.config.title)}</div>` : '';
-    if (!feed.data) {
-      this.body.innerHTML = title + empty(esc(feed.error || 'Waiting for the bot…'));
+    if (!this.feed || !this.feed.data) {
+      this.body.innerHTML = title + empty(esc((this.feed && this.feed.error) || 'Waiting for the bot…'));
       return;
     }
     if (this.shadowRoot.querySelector('[data-armed]')) return;   // mid two-tap confirm
@@ -1415,22 +1431,22 @@ class SnipeHuntCard extends HTMLElement {
     }
     if (el.dataset.do === 'set') {
       remember(el.dataset.key, el.dataset.value);
-      return feed.redraw();
+      return this.feed.redraw();
     }
     if (el.dataset.do === 'fb') {
       fb.open = el.dataset.item && fb.open !== el.dataset.item ? el.dataset.item : null;
       fb.reason = 'overvalued'; fb.note = '';
-      return feed.redraw();
+      return this.feed.redraw();
     }
-    if (el.dataset.do === 'fb-reason') { fb.reason = el.dataset.value; return feed.redraw(); }
+    if (el.dataset.do === 'fb-reason') { fb.reason = el.dataset.value; return this.feed.redraw(); }
     if (el.dataset.do === 'fb-send') {
       const note = el.closest('.fb').querySelector('input[data-fb-note]');
       const data = {item_id: el.dataset.item, reason: fb.reason, note: (note ? note.value : fb.note).slice(0, 200)};
       fb.open = null; fb.note = '';
       const row = el.closest('[data-row]'); if (row) row.style.display = 'none';
-      this._hass.callWS({type: DOMAIN + '/action', action: 'feedback', data})
-        .then(res => { this.toast(res.message); feed.redraw(); })
-        .catch(err => { this.toast((err && err.message) || 'That did not work'); feed.redraw(); });
+      this._hass.callWS({type: DOMAIN + '/action', action: 'feedback', data, ...this.who()})
+        .then(res => { this.toast(res.message); this.feed.redraw(); })
+        .catch(err => { this.toast((err && err.message) || 'That did not work'); this.feed.redraw(); });
       return;
     }
     if (el.dataset.confirm && el.dataset.armed == null) {
@@ -1445,10 +1461,13 @@ class SnipeHuntCard extends HTMLElement {
     if (el.dataset.busy) el.textContent = el.dataset.busy;
     if (el.hasAttribute('data-hide')) { const row = el.closest('[data-row]'); if (row) row.style.display = 'none'; }
     const {action, ...data} = JSON.parse(el.dataset.payload);
-    this._hass.callWS({type: DOMAIN + '/action', action, data})
-      .then(res => { if (action !== 'skip') this.toast(res.message); feed.redraw(); })
-      .catch(err => { this.toast((err && err.message) || 'That did not work'); feed.redraw(); });
+    this._hass.callWS({type: DOMAIN + '/action', action, data, ...this.who()})
+      .then(res => { if (action !== 'skip') this.toast(res.message); this.feed.redraw(); })
+      .catch(err => { this.toast((err && err.message) || 'That did not work'); this.feed.redraw(); });
   }
+
+  // Which bot this card's buttons talk to, when more than one is set up.
+  who() { return this.feed && this.feed.entry ? {entry: this.feed.entry} : {}; }
 
   copy(el) {
     const text = el.dataset.text;
@@ -1473,7 +1492,8 @@ window.customCards.push({
 // ----------------------------------------------------------------- strategy
 // dashboard:  strategy: {type: custom:snipe-hunt}
 // Optional:   tabs: [tonight, steals, collection, stats]   (overrides the integration option)
-const panel = (name, extra) => ({type: 'custom:snipe-hunt-card', panel: name, ...extra});
+//             entry: Monday Hunt   (which bot, by name or config entry id, when several are set up)
+const panelFor = entry => (name, extra) => ({type: 'custom:snipe-hunt-card', panel: name, ...(entry ? {entry} : {}), ...extra});
 const heading = (text, icon, entity) => ({
   type: 'heading', heading: text, icon, heading_style: 'title',
   ...(entity ? {badges: [{type: 'entity', entity}]} : {}),
@@ -1482,11 +1502,17 @@ const section = (...cards) => ({type: 'grid', cards: cards.filter(Boolean)});
 
 class SnipeHuntStrategy {
   static async generate(config, hass) {
+    const entry = config.entry ? String(config.entry).trim() : '';
+    const panel = panelFor(entry);
     let options = {};
-    try { options = await hass.callWS({type: DOMAIN + '/options'}); } catch (e) { /* cards say why */ }
-    // Entity ids can be renamed, so find the integration's entities by key.
+    try { options = await hass.callWS({type: DOMAIN + '/options', ...(entry ? {entry} : {})}); } catch (e) { /* cards say why */ }
+    // Entity ids can be renamed, so find the integration's entities by key, and
+    // with several bots set up, only this bot's: the ones on its device.
+    const devices = options.entry_id ? Object.values(hass.devices || {}).filter(d => (d.config_entries || []).includes(options.entry_id)).map(d => d.id) : [];
+    const mine = e => e.platform === DOMAIN && (!devices.length || devices.includes(e.device_id));
     const id = (domain, key) => Object.values(hass.entities || {}).find(e =>
-      e.platform === DOMAIN && e.translation_key === key && e.entity_id.startsWith(domain + '.'))?.entity_id;
+      mine(e) && e.translation_key === key && e.entity_id.startsWith(domain + '.'))?.entity_id;
+    const botName = options.name || 'Snipe Hunt';
     const graph = (hours, keys, title) => {
       const entities = keys.map(k => id('sensor', k)).filter(Boolean);
       return entities.length ? {type: 'history-graph', hours_to_show: hours, entities, ...(title ? {title} : {}), grid_options: {columns: 'full'}} : null;
@@ -1531,7 +1557,7 @@ class SnipeHuntStrategy {
             .map(([domain, key]) => id(domain, key))
             // A setting the bot doesn't expose is unavailable; leave it off the list.
             .filter(e => e && hass.states && hass.states[e] && hass.states[e].state !== 'unavailable')
-            .map(e => ({entity: e, name: String(hass.states[e].attributes.friendly_name || e).replace(/^Snipe Hunt /, '')})),
+            .map(e => ({entity: e, name: String(hass.states[e].attributes.friendly_name || e).replace(botName + ' ', '')})),
         }),
       ]},
     };
@@ -1542,7 +1568,7 @@ class SnipeHuntStrategy {
       : [...new Set(asked.map(t => OLD[t] || t))];
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
-      title: config.title || 'Snipe Hunt',
+      title: config.title || botName,
       views: (tabs.length ? tabs : Object.keys(VIEWS)).map(t => ({type: 'sections', max_columns: 3, ...VIEWS[t]})),
     };
   }

@@ -11,7 +11,7 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.snipe_hunt.api import SnipeHuntAuthError, SnipeHuntError
 from custom_components.snipe_hunt.const import CONF_TOKEN, CONF_URL, DOMAIN, EVENT_NEW_PICK
 
-from .conftest import PICK
+from .conftest import PICK, FakeBot
 
 
 def state(hass, entry, domain: str, key: str):
@@ -276,3 +276,77 @@ def test_old_tab_names_are_upgraded():
     assert upgrade_tabs(["today", "picks", "gixen", "collection", "bot"]) == TABS
     assert upgrade_tabs(["collection", "gixen", "bot"]) == ["collection", "stats"]
     assert upgrade_tabs(["nope"]) == TABS
+
+
+async def test_several_bots_each_get_their_own_entities_events_and_dashboard(
+    hass, entry, bot, hass_ws_client
+):
+    """A second bot (another player or collection) is its own entry, named after
+    the bot, with its own entity ids; cards, services and events name the bot."""
+    monday = FakeBot()
+    monday.snapshot["profile"] = {"app_name": "Monday Hunt", "player": "Rick Monday"}
+    monday.snapshot["picks"] = [{**PICK, "item_id": "999999999999", "card": "1967 Topps #542"}]
+    bot.by_url["http://monday.test:8767"] = monday
+
+    # The entry from before there could be several bots gets its address as unique id.
+    assert entry.unique_id == "http://bot.test:8766"
+    # The same bot twice is refused; a second bot at its own address is named after itself.
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "http://bot.test:8766/", CONF_TOKEN: "t"})
+    assert result["type"] is FlowResultType.ABORT and result["reason"] == "already_configured"
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "monday.test:8767", CONF_TOKEN: "m"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY and result["title"] == "Monday Hunt"
+    await hass.async_block_till_done()
+    second = result["result"]
+    assert second.state is ConfigEntryState.LOADED
+
+    # Each bot's entities carry its own name, so the ids don't collide.
+    assert state(hass, entry, "sensor", "live_picks").entity_id == "sensor.snipe_hunt_live_picks"
+    picks = state(hass, second, "sensor", "live_picks")
+    assert picks.entity_id == "sensor.monday_hunt_live_picks" and picks.state == "1"
+    assert state(hass, second, "sensor", "top_pick").state == "1967 Topps #542"
+
+    # The dashboard asks for a bot by name (any case) or entry id; unnamed, the first bot answers.
+    client = await hass_ws_client(hass)
+    for who, item in (({}, "111111111111"), ({"entry": "monday hunt"}, "999999999999"),
+                      ({"entry": second.entry_id}, "999999999999")):
+        await client.send_json_auto_id({"type": "snipe_hunt/subscribe", **who})
+        assert (await client.receive_json())["success"]
+        event = (await client.receive_json())["event"]
+        assert event["snapshot"]["picks"][0]["item_id"] == item
+        if who:
+            assert event["options"]["name"] == "Monday Hunt"
+            assert event["options"]["entry_id"] == second.entry_id
+    assert [b["name"] for b in event["options"]["bots"]] == ["Snipe Hunt", "Monday Hunt"]
+    await client.send_json_auto_id({"type": "snipe_hunt/options", "entry": "Nobody"})
+    reply = await client.receive_json()
+    while reply["type"] == "event":
+        reply = await client.receive_json()
+    assert not reply["success"] and "Nobody" in reply["error"]["message"]
+
+    # Buttons and services reach the bot they name.
+    await client.send_json_auto_id({"type": "snipe_hunt/action", "action": "skip",
+                                    "data": {"item_id": "999999999999"}, "entry": "Monday Hunt"})
+    reply = await client.receive_json()
+    while reply["type"] == "event":
+        reply = await client.receive_json()
+    assert reply["success"]
+    await hass.services.async_call(DOMAIN, "search_now", {"entry": second.entry_id}, blocking=True)
+    await hass.services.async_call(DOMAIN, "search_now", {}, blocking=True)
+    assert monday.actions == [{"action": "skip", "item_id": "999999999999"}, {"action": "search"}]
+    assert bot.actions == [{"action": "search"}]
+
+    # A new pick says which bot found it, and only that bot's event entity fires.
+    events = []
+    hass.bus.async_listen(EVENT_NEW_PICK, events.append)
+    monday.snapshot["picks"].append({**PICK, "item_id": "888888888888", "card": "1969 Topps #105"})
+    await second.runtime_data.async_refresh()
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert [(e.data["item_id"], e.data["bot"], e.data["entry_id"]) for e in events] == [
+        ("888888888888", "Monday Hunt", second.entry_id)]
+    assert state(hass, second, "event", "new_pick").attributes["card"] == "1969 Topps #105"
+    assert state(hass, entry, "event", "new_pick").state == "unknown"

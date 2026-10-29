@@ -20,7 +20,7 @@ class SnipeHuntEntity(CoordinatorEntity[SnipeHuntCoordinator]):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name="Snipe Hunt",
+            name=entry.title or "Snipe Hunt",
             manufacturer="Snipe Hunt",
             model="Card steal-finder bot",
             entry_type=DeviceEntryType.SERVICE,

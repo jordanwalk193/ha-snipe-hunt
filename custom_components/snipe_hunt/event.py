@@ -27,6 +27,9 @@ class SnipeHuntNewPick(SnipeHuntEntity, EventEntity):
 
     @callback
     def _new_pick(self, event: Event) -> None:
+        """Only this bot's picks: with several bots, each event entity is its own."""
+        if event.data.get("entry_id") not in (None, self.coordinator.config_entry.entry_id):
+            return
         if event.data.get("tier") in TIERS:
             self._trigger_event(event.data["tier"], dict(event.data))
             self.async_write_ha_state()

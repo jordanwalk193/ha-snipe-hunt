@@ -35,12 +35,13 @@
     "error": {
       "cannot_connect": "Can't reach the bot at that address. Check the address and that its API service is running.",
       "invalid_auth": "The bot rejected that token.",
-      "unsupported": "The bot and this integration are on different API versions. Update whichever is older."
+      "unsupported": "The bot and this integration are on different API versions. Update whichever is older.",
+      "already_configured": "Another entry already uses that bot address."
     },
     "abort": {
-      "single_instance_allowed": "Snipe Hunt is already set up.",
       "reconfigure_successful": "Saved.",
-      "reauth_successful": "Token saved."
+      "reauth_successful": "Token saved.",
+      "already_configured": "That bot is already set up. Each bot address can be added once; add another bot (another player or collection) at its own address."
     }
   },
   "options": {
@@ -322,11 +323,23 @@
   "services": {
     "search_now": {
       "name": "Search eBay now",
-      "description": "Starts the bot's hourly search right away."
+      "description": "Starts the bot's hourly search right away.",
+      "fields": {
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
+        }
+      }
     },
     "refresh": {
       "name": "Refresh",
-      "description": "Reads a fresh snapshot from the bot."
+      "description": "Reads a fresh snapshot from the bot.",
+      "fields": {
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
+        }
+      }
     },
     "skip_pick": {
       "name": "Skip a pick",
@@ -335,6 +348,10 @@
         "item_id": {
           "name": "eBay item number",
           "description": "The listing to hide."
+        },
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
         }
       }
     },
@@ -353,12 +370,22 @@
         "note": {
           "name": "Note",
           "description": "Optional, up to 200 characters. Scoring reads it."
+        },
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
         }
       }
     },
     "restore_skipped": {
       "name": "Restore skipped picks",
-      "description": "Brings back every pick hidden with Skip."
+      "description": "Brings back every pick hidden with Skip.",
+      "fields": {
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
+        }
+      }
     },
     "mark_filed": {
       "name": "Mark cards filed",
@@ -367,6 +394,10 @@
         "ids": {
           "name": "Card ids",
           "description": "Inventory ids of the delivered cards."
+        },
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
         }
       }
     },
@@ -377,12 +408,22 @@
         "login": {
           "name": "Sign in again",
           "description": "Sign the bot back in even if your browser took the session. This signs your browser out of Gixen."
+        },
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
         }
       }
     },
     "send_test_alert": {
       "name": "Send test alert",
-      "description": "Sends a test alert to the phone the bot notifies."
+      "description": "Sends a test alert to the phone the bot notifies.",
+      "fields": {
+        "entry": {
+          "name": "Bot",
+          "description": "Which bot, when more than one is set up. Leave empty for the first one."
+        }
+      }
     }
   }
 }

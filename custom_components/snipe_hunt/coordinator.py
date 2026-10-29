@@ -65,9 +65,11 @@ class SnipeHuntCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         picks = {p["item_id"]: p for p in data.get("picks", [])}
         if self._known_picks is not None:
             tiers = options(self.config_entry)[OPT_EVENT_TIERS]
+            entry = self.config_entry
             for item_id in picks.keys() - self._known_picks:
                 if picks[item_id].get("tier") in tiers:
-                    self.hass.bus.async_fire(EVENT_NEW_PICK, picks[item_id])
+                    self.hass.bus.async_fire(EVENT_NEW_PICK, {
+                        **picks[item_id], "bot": entry.title, "entry_id": entry.entry_id})
             # Remember ended picks too, so un-skipping one doesn't announce it again.
             self._known_picks |= picks.keys()
         else:

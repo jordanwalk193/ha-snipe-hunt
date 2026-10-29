@@ -22,6 +22,7 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import SnipeHuntAuthError, SnipeHuntClient, SnipeHuntError
+from .helpers import bot_name
 from .const import (
     CONF_TOKEN,
     CONF_URL,
@@ -67,16 +68,22 @@ class SnipeHuntConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def _async_check(self, url: str, token: str) -> str | None:
-        """Return an error key, or None if the bot answered with a snapshot."""
+    async def _async_check(self, url: str, token: str) -> tuple[str | None, dict]:
+        """An error key, or None and the snapshot if the bot answered."""
         client = SnipeHuntClient(async_get_clientsession(self.hass), url, token)
         try:
-            await client.async_snapshot()
+            snapshot = await client.async_snapshot()
         except SnipeHuntAuthError:
-            return "invalid_auth"
+            return "invalid_auth", {}
         except SnipeHuntError as err:
-            return "unsupported" if "API version" in str(err) else "cannot_connect"
-        return None
+            return ("unsupported" if "API version" in str(err) else "cannot_connect"), {}
+        return None, snapshot
+
+    def _taken(self, url: str, except_entry: ConfigEntry | None = None) -> bool:
+        """Is this bot address already set up as another entry?"""
+        return any(entry.data.get(CONF_URL) == url
+                   for entry in self._async_current_entries(include_ignore=False)
+                   if except_entry is None or entry.entry_id != except_entry.entry_id)
 
     def _schema(self, defaults: Mapping[str, Any]) -> vol.Schema:
         return self.add_suggested_values_to_schema(
@@ -89,9 +96,15 @@ class SnipeHuntConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = {CONF_URL: _clean_url(user_input[CONF_URL]),
                     CONF_TOKEN: user_input[CONF_TOKEN].strip()}
-            error = await self._async_check(data[CONF_URL], data[CONF_TOKEN])
+            # One entry per bot address. Several bots (one per player or
+            # collection) are fine; the same bot twice is not.
+            await self.async_set_unique_id(data[CONF_URL])
+            self._abort_if_unique_id_configured()
+            if self._taken(data[CONF_URL]):   # set up before addresses were unique ids
+                return self.async_abort(reason="already_configured")
+            error, snapshot = await self._async_check(data[CONF_URL], data[CONF_TOKEN])
             if error is None:
-                return self.async_create_entry(title="Snipe Hunt", data=data)
+                return self.async_create_entry(title=bot_name(snapshot), data=data)
             errors["base"] = error
         return self.async_show_form(
             step_id="user", data_schema=self._schema(user_input or {}), errors=errors
@@ -106,9 +119,12 @@ class SnipeHuntConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             data = {CONF_URL: _clean_url(user_input[CONF_URL]),
                     CONF_TOKEN: user_input[CONF_TOKEN].strip()}
-            error = await self._async_check(data[CONF_URL], data[CONF_TOKEN])
+            error, _ = await self._async_check(data[CONF_URL], data[CONF_TOKEN])
+            if error is None and self._taken(data[CONF_URL], except_entry=entry):
+                error = "already_configured"
             if error is None:
-                return self.async_update_reload_and_abort(entry, data=data)
+                return self.async_update_reload_and_abort(
+                    entry, data=data, unique_id=data[CONF_URL])
             errors["base"] = error
         return self.async_show_form(
             step_id="reconfigure", data_schema=self._schema(user_input or entry.data),
@@ -126,7 +142,7 @@ class SnipeHuntConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             token = user_input[CONF_TOKEN].strip()
-            error = await self._async_check(entry.data[CONF_URL], token)
+            error, _ = await self._async_check(entry.data[CONF_URL], token)
             if error is None:
                 return self.async_update_reload_and_abort(
                     entry, data_updates={CONF_TOKEN: token}

@@ -1,7 +1,24 @@
 search_now:
+  fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
 refresh:
+  fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
 skip_pick:
   fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
     item_id:
       required: true
       example: "278435397313"
@@ -9,6 +26,11 @@ skip_pick:
         text:
 pick_feedback:
   fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
     item_id:
       required: true
       example: "278435397313"
@@ -33,8 +55,19 @@ pick_feedback:
       selector:
         text:
 restore_skipped:
+  fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
 mark_filed:
   fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
     ids:
       required: true
       example: ["412", "413"]
@@ -42,8 +75,19 @@ mark_filed:
         object:
 gixen_refresh:
   fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt
     login:
       default: false
       selector:
         boolean:
 send_test_alert:
+  fields:
+    entry:
+      required: false
+      selector:
+        config_entry:
+          integration: snipe_hunt

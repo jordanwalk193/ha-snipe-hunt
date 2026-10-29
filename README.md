@@ -63,6 +63,18 @@ strategy:
   tabs: [tonight, steals, collection]
 ```
 
+### More than one bot
+
+Running a second Snipe Hunt for another player or collection? Add it the same way (**Add integration → Snipe Hunt**, its own address and token). Each bot is its own entry, named after the bot (`app_name` in its profile, for example "Monday Hunt"), with its own device and entities (`sensor.monday_hunt_live_picks`, ...) and its own options: accent colour, tabs, poll interval. Give each bot its own dashboard by naming it:
+
+```yaml
+strategy:
+  type: custom:snipe-hunt
+  entry: Monday Hunt
+```
+
+`entry` is the bot's name (as shown under Devices & services; case doesn't matter) or its config entry id. Single cards take the same `entry` option, and so do the services. Left out, the first bot you set up answers, so a dashboard from before 2.21 keeps working as it was.
+
 ### Building your own layout
 
 Any panel can go on any dashboard:
@@ -148,9 +160,9 @@ actions:
         url: "{{ state_attr(trigger.entity_id, 'url') }}"
 ```
 
-The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `value`, `deal` (1 to 5 stars), `deal_pct`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`.
+The event carries the pick: `item_id`, `card`, `tier`, `price`, `shipping`, `total`, `max`, `max_basis`, `value`, `deal` (1 to 5 stars), `deal_pct`, `is_auction`, `end_time`, `seller`, `why`, `url`, `image`. With several bots set up it also says which one found it: `bot` (the entry's name) and `entry_id`, so `event_data: {bot: Monday Hunt}` picks one bot's finds.
 
-Services: `snipe_hunt.search_now`, `refresh`, `skip_pick` (`item_id`), `pick_feedback` (`item_id`, `reason`: overvalued, wrong_card, bad_seller, dont_want_this_type, already_have, other or good_pick, optional `note` up to 200 characters), `restore_skipped`, `mark_filed` (`ids`), `gixen_refresh` (`login`), `send_test_alert`.
+Services: `snipe_hunt.search_now`, `refresh`, `skip_pick` (`item_id`), `pick_feedback` (`item_id`, `reason`: overvalued, wrong_card, bad_seller, dont_want_this_type, already_have, other or good_pick, optional `note` up to 200 characters), `restore_skipped`, `mark_filed` (`ids`), `gixen_refresh` (`login`), `send_test_alert`. Every service takes an optional `entry` (a bot's name or config entry id) when more than one bot is set up.
 
 ## The bot's API
 
