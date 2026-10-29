@@ -25,6 +25,8 @@ def _card_options(hass: HomeAssistant, coordinator: SnipeHuntCoordinator) -> dic
         "picks_per_page": int(opts[OPT_PICKS_PER_PAGE]),
         "tabs": upgrade_tabs(opts[OPT_TABS]),
         "report_url": opts[OPT_REPORT_URL],
+        # False for a bot with no Gixen account (the strategy leaves the snipe panels out).
+        "gixen_account": (coordinator.data or {}).get("gixen_account", True) is not False,
         "entry_id": entry.entry_id,
         "name": entry.title,
         "bots": [{"entry_id": e.entry_id, "name": e.title} for e in loaded_entries(hass)],

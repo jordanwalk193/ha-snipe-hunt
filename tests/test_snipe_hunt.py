@@ -321,6 +321,14 @@ async def test_several_bots_each_get_their_own_entities_events_and_dashboard(
             assert event["options"]["name"] == "Monday Hunt"
             assert event["options"]["entry_id"] == second.entry_id
     assert [b["name"] for b in event["options"]["bots"]] == ["Snipe Hunt", "Monday Hunt"]
+    assert event["options"]["gixen_account"] is True   # a bot that doesn't say has one
+    monday.snapshot["gixen_account"] = False
+    await second.runtime_data.async_refresh()
+    await client.send_json_auto_id({"type": "snipe_hunt/options", "entry": "Monday Hunt"})
+    reply = await client.receive_json()
+    while reply["type"] == "event":
+        reply = await client.receive_json()
+    assert reply["result"]["gixen_account"] is False
     await client.send_json_auto_id({"type": "snipe_hunt/options", "entry": "Nobody"})
     reply = await client.receive_json()
     while reply["type"] == "event":

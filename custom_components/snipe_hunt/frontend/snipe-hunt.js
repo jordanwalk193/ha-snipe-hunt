@@ -429,7 +429,9 @@ const snipeRow = s => {
   </div>`;
 };
 const gixenDown = c => c.gixenOff
-  ? `<div style="padding-top:12px"><b>Gixen reading is off.</b><div class="muted" style="font-size:13px;margin-top:4px">Turn on "Read Gixen snipes" in the Snipe Hunt settings to see your snipes here.</div></div>`
+  ? (c.d.gixen_account === false
+    ? `<div style="padding-top:12px"><b>No Gixen account on this bot.</b><div class="muted" style="font-size:13px;margin-top:4px">Snipes are placed by hand here; each auction pick shows the max to use.</div></div>`
+    : `<div style="padding-top:12px"><b>Gixen reading is off.</b><div class="muted" style="font-size:13px;margin-top:4px">Turn on "Read Gixen snipes" in the Snipe Hunt settings to see your snipes here.</div></div>`)
   : `<div style="padding-top:12px"><b>Can't read Gixen yet.</b><div class="muted" style="font-size:13px;margin:4px 0 8px">${esc(c.gixen.problem || 'Waiting for the first read')}.</div>${act('Sign in to Gixen now', {action: 'gixen_refresh', login: true}, {busy: 'Signing in…', color: '#6a1b9a'})}</div>`;
 const gixenStale = g => `<div class="warn">List is from ${ago(g.read_at)}. ${esc(g.problem)}.<br>${act('Sign in now', {action: 'gixen_refresh', login: true}, {busy: 'Signing in…', color: '#6a1b9a'})} <span class="muted">This signs your browser out of Gixen.</span></div>`;
 const searchBtn = c => c.d.status.searching ? pill('Searching eBay…', '#1e88e5') : act('Search eBay now', {action: 'search'}, {busy: 'Starting…', color: c.accent});
@@ -1521,6 +1523,7 @@ class SnipeHuntStrategy {
     const id = (domain, key) => Object.values(hass.entities || {}).find(e =>
       mine(e) && e.translation_key === key && e.entity_id.startsWith(domain + '.'))?.entity_id;
     const botName = options.name || 'Snipe Hunt';
+    const gixen = options.gixen_account !== false;   // a bot with no Gixen account gets no snipe panels
     const graph = (hours, keys, title) => {
       const entities = keys.map(k => id('sensor', k)).filter(Boolean);
       return entities.length ? {type: 'history-graph', hours_to_show: hours, entities, ...(title ? {title} : {}), grid_options: {columns: 'full'}} : null;
@@ -1532,7 +1535,7 @@ class SnipeHuntStrategy {
         {...section(heading('Ending soonest', 'mdi:timer-sand'), panel('ending')), column_span: 3},
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         {...section(heading('To do', 'mdi:checkbox-marked-circle-outline', id('sensor', 'need_snipe')), panel('todo')), column_span: 2},
-        section(heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today'),
+        section(...(gixen ? [heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today')] : []),
           heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay')),
       ]},
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
@@ -1553,7 +1556,7 @@ class SnipeHuntStrategy {
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
           ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
             {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
-        section(heading('Every Gixen snipe', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')),
+        gixen ? section(heading('Every Gixen snipe', 'mdi:target', id('sensor', 'gixen_snipes')), panel('gixen')) : null,
         section(heading('Sold prices', 'mdi:gavel'), panel('sold'), heading('Price history', 'mdi:chart-line'), panel('history')),
         section(heading('Bot health', 'mdi:robot-outline'), panel('health'), heading('Last 3 days', 'mdi:chart-line'), graph(72, ['listings', 'live_picks']), graph(72, ['status'])),
         section(heading('Settings', 'mdi:tune'), {
@@ -1577,7 +1580,7 @@ class SnipeHuntStrategy {
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
-      views: (tabs.length ? tabs : Object.keys(VIEWS)).map(t => ({type: 'sections', max_columns: 3, ...VIEWS[t]})),
+      views: (tabs.length ? tabs : Object.keys(VIEWS)).map(t => ({type: 'sections', max_columns: 3, ...VIEWS[t], sections: VIEWS[t].sections.filter(Boolean)})),
     };
   }
 }
