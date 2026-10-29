@@ -75,6 +75,7 @@ const arg = o => esc(JSON.stringify(o));
 
 const cap = text => `<div class="cap">${text}</div>`;
 const pill = (text, color) => `<span class="pill" style="background:${color}">${text}</span>`;
+const tpill = (text, color, title) => `<span class="pill" style="background:${color}" title="${esc(title)}">${text}</span>`;
 const empty = text => `<div class="muted empty">${text}</div>`;
 const stat = (label, value, color, icon) => `<div class="stat" style="background:${color}22;border-color:${color}55">
   <div class="stat-icon">${icon}</div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
@@ -133,7 +134,7 @@ const context = (card) => {
     gixenOff: d.gixen == null,
     hours: Number(s.need_snipe_hours) || 24,
     cards: d.cards || [],
-    need: (gixenOn ? soon.filter(p => p.snipe == null) : soon).sort((x, y) => x.end_time < y.end_time ? -1 : 1),
+    need: (gixenOn ? soon.filter(p => p.snipe == null && !p.marked) : soon.filter(p => !p.marked)).sort((x, y) => x.end_time < y.end_time ? -1 : 1),
     snipes: (gixen.snipes || []).filter(x => msLeft(x.end_time) > 0),
     accent: card.config.accent || feed.options.accent || '#c41e3a',
     perPage: Number(card.config.picks_per_page || feed.options.picks_per_page) || 25,
@@ -153,8 +154,27 @@ const badge = p => {
   }
   return pill(p.best_offer ? 'Offer' : 'Buy now', '#1e88e5');
 };
+// "Added to Gixen": your own mark on a pick, until Gixen's list shows the snipe.
+const markedPill = p => p.snipe == null && p.marked
+  ? ' ' + tpill('✓ Added to Gixen' + (p.marked.max ? ' ' + cents(p.marked.max) : ''), '#2e7d32', 'You marked this as sniped. It stays marked until Gixen\'s list shows the snipe.') : '';
+const markBtn = p => !p.is_auction || p.snipe != null ? '' : (p.marked
+  ? act('Undo added', {action: 'sniped', item_id: p.item_id, undo: true}, {busy: 'Unmarking…'})
+  : act('✓ Added to Gixen', {action: 'sniped', item_id: p.item_id, max: p.max == null ? '' : cents(p.max)}, {busy: 'Marking…', color: '#2e7d32'}));
+// An auction that still has a Buy It Now: it goes away at the first bid.
+const binBtn = p => p.is_auction && p.bin_price ? linkBtn('Buy now ' + money(p.bin_price) + ' ↗', p.url, '#1e88e5') : '';
+const binTxt = p => p.is_auction && p.bin_price ? ` · <b title="A Buy It Now on this auction; the first bid removes it">or BIN ${money(p.bin_price)}</b>` : '';
+// Where steals happen (the bot's closes.py): the seller's heat and the ending hour.
+const closesPill = (p, short) => {
+  const c = p.closes;
+  if (!c) return '';
+  if (c.seller === 'hot') return tpill((short ? '🔥 hot seller' : '🔥 Hot seller') + ' ~' + Math.round(100 * c.seller_share) + '%', '#e53935', `This seller's auctions close at ~${Math.round(100 * c.seller_share)}% of the going rate (${c.seller_n} sold): a cheapskate max rarely wins here.`) + ' ';
+  const parts = [];
+  if (c.seller === 'cold') parts.push(short ? 'quiet' : 'quiet seller');
+  if (c.ending === 'day') parts.push(short ? 'day end' : 'daytime end');
+  return parts.length ? tpill('🧊 ' + parts.join(' · ') + ' ~' + Math.round(100 * c.likely_share) + '%', '#0288d1', `Auctions like this close at ~${Math.round(100 * c.likely_share)}% of the going rate${c.likely ? ' (about ' + money(c.likely) + ' here)' : ''}: where a max is likely to win.`) + ' ' : '';
+};
 const sniped = p => {
-  if (p.snipe == null) return '';
+  if (p.snipe == null) return markedPill(p);
   const over = p.bid_now != null && Number(p.bid_now) >= Number(p.snipe);
   return ' ' + pill((over ? '📈 over your ' : '🎯 ') + cents(p.snipe), over ? '#e53935' : '#6a1b9a');
 };
@@ -166,7 +186,7 @@ const thumb = (p, w, h) => {
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
-    ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
+    ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + (p.snipe == null && !p.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
   ${p.feedback === 'good_pick' ? pill('👍 Good call noted', '#43a047') : act('👍 Good call', {action: 'feedback', item_id: p.item_id, reason: 'good_pick'}, {busy: 'Saving…'})}
@@ -216,7 +236,7 @@ const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // A jackpot (the bot's jackpot.py): a $20+ card for a sliver of its value. It gets
 // the loudest thing on the dashboard, because it won't be there for long.
 const jackpotPill = p => p.jackpot ? pill('🚨 JACKPOT', '#d50000') + ' ' : '';
-const jackpotPay = p => Number(p.bid_now ?? p.price) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const jackpotPay = p => Number(p.jackpot_bin && p.bin_price ? p.bin_price : (p.bid_now ?? p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
 const jackpotBanner = c => {
   const live = (c.d.jackpots || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
   if (!live.length) return '';
@@ -225,11 +245,11 @@ const jackpotBanner = c => {
     return `<div class="jackpot" data-row>
       ${p.image ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none"><img src="${esc(p.image.replace('s-l225', 's-l500'))}" style="height:110px;border-radius:8px;display:block"></a>` : ''}
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;letter-spacing:2px;font-weight:700">🚨 JACKPOT${p.is_auction ? ' · AUCTION ENDS ' + left(p.end_time).toUpperCase() : ' · BUY IT NOW'}</div>
+        <div style="font-size:12px;letter-spacing:2px;font-weight:700">🚨 JACKPOT${p.jackpot_bin ? ' · BUY IT NOW ON AN AUCTION, GONE AT THE FIRST BID' : p.is_auction ? ' · AUCTION ENDS ' + left(p.end_time).toUpperCase() : ' · BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:18px;font-weight:700;margin:3px 0;color:#fff">${esc(p.card)}</a>
         <div style="font-size:16px"><b>${money(jackpotPay(p))}</b> delivered for a <b>${worth(p.value)}</b> card${off != null ? ` · <b>${off}% off</b>` : ''}</div>
         <div style="font-size:13px;margin-top:3px;opacity:.9">${p.jackpot === 'sales' ? 'Value from recorded sales.' : 'Value is the bot\'s estimate: glance at the comps as you buy.'} You will not see it this cheap again.</div>
-        <div class="row tight" style="margin-top:8px">${p.is_auction
+        <div class="row tight" style="margin-top:8px">${p.is_auction && !p.jackpot_bin
           ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
           : linkBtn(p.best_offer ? 'Buy now (has offers) ↗' : 'BUY NOW ↗', p.url, '#ffffff')}</div>
       </div></div>`;
@@ -340,7 +360,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -420,10 +440,10 @@ const tile = p => {
   const img = p.image ? p.image.replace('s-l225', 's-l500') : null;
   const corner = ms != null
     ? `<span class="clock" style="background:${clockColor(ms)}">⏱ ${left(p.end_time)}</span>`
-    : `<span class="clock" style="background:#1e88e5">${p.best_offer ? 'BUY / OFFER' : 'BUY NOW'}</span>`;
+    : `<span class="clock" style="background:#1e88e5">${p.via_bin ? 'BIN ON AUCTION' : p.best_offer ? 'BUY / OFFER' : 'BUY NOW'}</span>`;
   const hot = p.jackpot ? ' jp' : (ms != null && ms < HOUR ? ' hot' : '');
   const buttons = p.is_auction
-    ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + copyBtn('Item #', p.item_id) + (p.snipe == null ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '')
+    ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + copyBtn('Item #', p.item_id) + (p.snipe == null && !p.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Buy / offer ↗' : 'Buy now ↗', p.url, '#1e88e5') + copyBtn('Item #', p.item_id);
   return `<div class="tile${hot}" data-row>
     <a class="tile-img" href="${esc(p.url)}" target="_blank" rel="noopener">
@@ -435,7 +455,8 @@ const tile = p => {
       <div class="tile-price"><b>${money(payNow(p))}</b> <span class="muted">${p.is_auction ? 'now · w/ ship' : 'w/ ship'}</span></div>
       <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}</div>
       ${offMeter(share)}
-      ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : ''}
+      ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : (p.marked ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Added to Gixen${p.marked.max ? ' at ' + cents(p.marked.max) : ''}</div>` : '')}
+      ${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
       <div class="row tight">${buttons}</div>
     </div></div>`;
 };
@@ -445,7 +466,12 @@ const strip = (tiles, more) => `<div class="strip">${tiles.join('')}</div>` + (m
 // the cheapest share of value first, jackpots on top.
 const buyLine = c => Math.min(Number(c.s.max_share) || 0.6, 0.6);
 const buyNowSteals = c => {
-  const live = c.picks.filter(p => !p.is_auction && p.value && !p.unverified && shareNow(p) <= buyLine(c));
+  const line = buyLine(c);
+  // an auction's Buy It Now is a Buy It Now until someone bids
+  const viaBin = c.picks.filter(p => p.is_auction && p.bin_price && p.value && !p.unverified && !(Number(p.bids) > 0))
+    .map(p => ({...p, is_auction: false, price: p.bin_price, bid_now: null, via_bin: true}))
+    .filter(p => shareNow(p) <= line);
+  const live = c.picks.filter(p => !p.is_auction && p.value && !p.unverified && shareNow(p) <= line).concat(viaBin);
   const ids = new Set(live.map(p => p.item_id));
   const jack = (c.d.jackpots || []).filter(p => !p.is_auction && !ids.has(p.item_id));
   return [...jack, ...live].sort((x, y) => !!y.jackpot - !!x.jackpot || shareNow(x) - shareNow(y));
@@ -862,6 +888,20 @@ const PANELS = {
       (shown.length ? shown.map(pickRow).join('') : empty('Nothing matches those filters.')) +
       (picks.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + picks.length, 'limit', 'all', '#546e7a')}</div>`
         : (limit === 'all' && picks.length > c.perPage ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'limit', 'page')}</div>` : '')) + `</div>`;
+  }],
+
+  closes: ['Where steals happen', false, c => {
+    const k = c.d.closes;
+    if (!k) return empty('Update the bot to see this: it needs a version that learns how auctions close.');
+    if (!k.trusted) return empty(`Still learning: ${k.calls} picked auctions have sold so far; this needs 30.`);
+    const pct = g => g && g.share != null ? Math.round(100 * g.share) + '%' : '–';
+    const row = (icon, s) => `<div class="line" style="padding:6px 0;font-size:13px">${icon} <b>${esc(s.seller)}</b> <span class="muted">· closes ~${Math.round(100 * s.share)}% of value · ${s.n} sold</span></div>`;
+    return `<div style="padding-top:10px"></div>` + grid(2, [
+      stat('ONE-OFF SELLERS', pct(k.groups.small), '#0288d1', '🧊'), stat('CONSIGNORS', pct(k.groups.consignor), '#e53935', '🔥'),
+      stat('DAYTIME ENDINGS', pct(k.hours.day), '#0288d1', '🌤️'), stat('EVENING ENDINGS', pct(k.hours.evening), '#fb8c00', '🌙')]) +
+      `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">How far from the bot's going rate its picked auctions closed, as a median of the ${k.calls} that sold (100% = at the going rate, shipping included). Daytime is 8am–8pm at small sellers; consignors nearly all end in the evening. A 🧊 quiet seller or daytime ending is where a cheapskate max wins; a 🔥 hot seller is where it doesn't, so lowball snipes skip them.</div>` +
+      (k.hot.length ? cap('HOT SELLERS · THEIR AUCTIONS CLOSE OVER VALUE') + k.hot.map(x => row('🔥', x)).join('') : '') +
+      (k.quiet.length ? cap('QUIET SELLERS · WHERE THE MAX WINS') + k.quiet.map(x => row('🧊', x)).join('') : '');
   }],
 
   calls: ['How the calls turned out', false, c => {
@@ -1473,7 +1513,7 @@ class SnipeHuntStrategy {
         section(heading('Every card', 'mdi:magnify'), panel('binder'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
-        section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls')),
+        section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Brag board', 'mdi:trophy-award'), panel('brag')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
