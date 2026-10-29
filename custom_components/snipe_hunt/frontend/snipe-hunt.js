@@ -71,11 +71,17 @@ const ago = iso => {
 // won't keep anything (a private window, strict privacy settings, some phone app
 // web views); localStorage only carries them over to the next visit.
 const memory = {};
+// With several bots set up, each bot's dashboard keeps its own choices: `scope`
+// is the bot whose panel is being drawn (set by the card before it draws).
+let scope = '';
+const scoped = key => (scope ? scope + ':' : '') + key;
 const store = (key, def) => {
+  key = scoped(key);
   if (key in memory) return memory[key];
   try { return localStorage.getItem('ws_' + key) ?? def; } catch (e) { return def; }
 };
 const remember = (key, value) => {
+  key = scoped(key);
   memory[key] = value;
   try { localStorage.setItem('ws_' + key, value); } catch (e) { /* not kept past this visit */ }
 };
@@ -549,7 +555,7 @@ const PANELS = {
     // one you haven't sniped and that isn't already bid near its max, if there is one
     const p = ranked.find(x => x.snipe == null && (heat(x) ?? 0) < HEAT) || ranked.find(x => x.snipe == null) || ranked[0];
     if (!p) return empty(good.length
-      ? 'Nothing live is a real steal right now: every 🔥 and 🟢 pick is close to its going rate. They are all on the Picks tab.'
+      ? 'Nothing live is a real steal right now: every 🔥 and 🟢 pick is close to its going rate. They are all on the Steals tab.'
       : 'No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
     const t = TIER[p.tier] || ['•', '#546e7a'];
     const gap = room(p);
@@ -683,7 +689,7 @@ const PANELS = {
       (top.length ? top.map((p, i) => pickLine(p,
         `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('')
-        : empty(mine.length ? 'The live picks here are all close to their going rate. They are on the Picks tab.' : 'No live picks here yet. The bot searches for these every hour.'));
+        : empty(mine.length ? 'The live picks here are all close to their going rate. They are on the Steals tab.' : 'No live picks here yet. The bot searches for these every hour.'));
   }],
 
   under: ['Best under $20', true, c => {
@@ -1374,6 +1380,7 @@ class SnipeHuntCard extends HTMLElement {
       return;
     }
     if (this.shadowRoot.querySelector('[data-armed]')) return;   // mid two-tap confirm
+    scope = this.feed.entry || '';
     const typing = this.shadowRoot.activeElement;
     if (typing && typing.matches('input[data-fb-note]')) return;   // mid "bad pick" note
     const search = this.shadowRoot.activeElement && this.shadowRoot.activeElement.matches('input[data-search]')
@@ -1430,6 +1437,7 @@ class SnipeHuntCard extends HTMLElement {
       return;
     }
     if (el.dataset.do === 'set') {
+      scope = this.feed.entry || '';
       remember(el.dataset.key, el.dataset.value);
       return this.feed.redraw();
     }
