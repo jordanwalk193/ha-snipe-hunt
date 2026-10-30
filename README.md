@@ -89,6 +89,8 @@ accent: "#c41e3a"       # optional
 | Panel | Shows |
 |---|---|
 | `summary` | The four numbers that matter today, plus Search and Refresh |
+| `worth` | What the collection is worth by the ledger's newest sale of each card, with the week's movers and the top cards (needs a bot with `worth`) |
+| `trends` | Market trends: cards sold 3+ times whose last 30 days moved 10%+ against the sales before (needs a bot with `trends`) |
 | `closes` | Where steals happen: how the bot's picked auctions closed against the going rate, by seller (one-off vs consignor) and by ending hour (daytime vs evening), with the hottest and quietest sellers named (needs a bot with `closes`) |
 | `buy_now` | ⚡ Buy now, think later: Buy It Now steals at your steal line or better (50% of value with steals mode, else 60%), as photo tiles with the share off, cheapest share first, jackpots on top; a swipeable row on phones (`count:` changes the eight) |
 | `ending` | ⏱ Ending soonest: picked auctions not yet bid past the max, as photo tiles with a countdown that turns orange and red near the end, a Soonest / Best deal toggle, and Copy max / Gixen on each (`count:` changes the ten) |

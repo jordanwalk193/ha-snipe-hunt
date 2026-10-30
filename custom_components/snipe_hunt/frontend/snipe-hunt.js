@@ -187,6 +187,9 @@ const closesPill = (p, short) => {
   if (c.ending === 'day') parts.push(short ? 'day end' : 'daytime end');
   return parts.length ? tpill('🧊 ' + parts.join(' · ') + ' ~' + Math.round(100 * c.likely_share) + '%', '#0288d1', `Auctions like this close at ~${Math.round(100 * c.likely_share)}% of the going rate${c.likely ? ' (about ' + money(c.likely) + ' here)' : ''}: where a max is likely to win.`) + ' ' : '';
 };
+// The card's own price trend from the ledger (the bot's ledger.py): last 30 days against before.
+const trendPill = p => p.trend ? tpill((p.trend.dir === 'up' ? '📈 +' : '📉 ') + p.trend.pct + '%', p.trend.dir === 'up' ? '#2e7d32' : '#c62828',
+  `This card's sales: ~${money(p.trend.was)} before, ~${money(p.trend.now)} in the last 30 days (${p.trend.n} sales)`) + ' ' : '';
 const sniped = p => {
   if (p.snipe == null) return markedPill(p);
   const over = p.bid_now != null && Number(p.bid_now) >= Number(p.snipe);
@@ -374,7 +377,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -472,7 +475,7 @@ const tile = p => {
       <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}</div>
       ${offMeter(share)}
       ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : (p.marked ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Added to Gixen${p.marked.max ? ' at ' + cents(p.marked.max) : ''}</div>` : '')}
-      ${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
+      ${trendPill(p)}${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
       <div class="row tight">${buttons}</div>
     </div></div>`;
 };
@@ -904,6 +907,34 @@ const PANELS = {
       (shown.length ? shown.map(pickRow).join('') : empty('Nothing matches those filters.')) +
       (picks.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + picks.length, 'limit', 'all', '#546e7a')}</div>`
         : (limit === 'all' && picks.length > c.perPage ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'limit', 'page')}</div>` : '')) + `</div>`;
+  }],
+
+  trends: ['Market trends', false, c => {
+    const t = c.d.trends;
+    if (!t) return empty('Update the bot to see this: it needs a version with ledger trends.');
+    const row = m => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:7px 0">
+      ${m.image ? `<img src="${esc(m.image)}" style="width:36px;height:50px;object-fit:cover;border-radius:5px">` : ''}
+      <div style="flex:1;min-width:0"><a class=title href="${esc(m.url)}" target=_blank rel=noopener style="font-size:13px">${esc(m.card)}</a>
+      <div class=muted style="font-size:12px">~${money(m.was)} → ~<b style="color:var(--primary-text-color)">${money(m.now)}</b> · ${m.n} sales</div></div>
+      <b style="color:${m.dir === 'up' ? '#2e7d32' : '#c62828'};font-size:16px">${m.pct > 0 ? '+' : ''}${m.pct}%</b></div>`;
+    if (!t.up.length && !t.down.length) return empty(`No card has moved 10% yet. ${t.cards} cards have sold 3+ times in the last 120 days; trends show once their recent sales part from the earlier ones.`);
+    return (t.up.length ? cap('📈 RISING · LAST 30 DAYS AGAINST BEFORE') + t.up.map(row).join('') : '')
+      + (t.down.length ? cap('📉 FALLING') + t.down.map(row).join('') : '')
+      + `<div class=muted style="font-size:12px;margin-top:8px">From the bot's own sold-price ledger: cards sold 3+ times in 120 days, the last 30 days' median against the sales before.</div>`;
+  }],
+
+  worth: ['What the collection is worth', false, c => {
+    const w = c.d.worth;
+    if (!w) return empty('Update the bot to see this: it needs a version with ledger worth.');
+    if (!w.valued) return empty(`None of your ${w.n} cards has a recorded sale of the same card yet. This fills in as the ledger grows.`);
+    const gainColor = w.gain >= 0 ? '#2e7d32' : '#c62828';
+    return `<div style="padding-top:10px"></div>` + grid(3, [
+      stat('WORTH', '$' + Math.round(w.value).toLocaleString(), '#1e88e5', '💎'),
+      stat('PAID', '$' + Math.round(w.paid).toLocaleString(), '#546e7a', '💳'),
+      stat(w.gain >= 0 ? 'UP' : 'DOWN', (w.gain >= 0 ? '+$' : '-$') + Math.abs(Math.round(w.gain)).toLocaleString(), gainColor, w.gain >= 0 ? '📈' : '📉')]) +
+      `<div class=muted style="font-size:12px;margin-top:8px">${w.valued} of ${w.n} cards priced by the ledger's newest sale of the same card; the rest at what you paid.</div>` +
+      (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + w.movers.map(m => `<div class=line style="padding:6px 0;font-size:13px"><b>${esc(m.card)}</b> <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></div>`).join('') : '') +
+      cap('TOP CARDS BY THE LEDGER') + w.top.filter(x => x.by === 'sales').slice(0, 8).map(x => `<div class=line style="padding:6px 0;font-size:13px"><b>${esc(x.card)}</b> <span class=muted>· paid ${money(x.paid)} · worth <b style="color:var(--primary-text-color)">${money(x.value)}</b> (${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at})</span></div>`).join('');
   }],
 
   closes: ['Where steals happen', false, c => {
@@ -1551,6 +1582,7 @@ class SnipeHuntStrategy {
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
+        section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('Market trends', 'mdi:trending-up'), panel('trends')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Brag board', 'mdi:trophy-award'), panel('brag')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
