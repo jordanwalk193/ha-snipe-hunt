@@ -358,3 +358,14 @@ async def test_several_bots_each_get_their_own_entities_events_and_dashboard(
         ("888888888888", "Monday Hunt", second.entry_id)]
     assert state(hass, second, "event", "new_pick").attributes["card"] == "1969 Topps #105"
     assert state(hass, entry, "event", "new_pick").state == "unknown"
+
+
+async def test_a_tap_on_an_alert_button_reaches_the_bot(hass, entry, bot):
+    from custom_components.snipe_hunt import NOTIFICATION_EVENT
+    hass.bus.async_fire(NOTIFICATION_EVENT, {"action": "SNIPE_HUNT_SNIPED_111111111111"})
+    hass.bus.async_fire(NOTIFICATION_EVENT, {"action": "SNIPE_HUNT_SKIP_111111111111"})
+    hass.bus.async_fire(NOTIFICATION_EVENT, {"action": "SNIPE_HUNT_NOPE_111111111111"})   # unknown op
+    hass.bus.async_fire(NOTIFICATION_EVENT, {"action": "SOMETHING_ELSE"})
+    await hass.async_block_till_done()
+    assert bot.actions == [{"action": "sniped", "item_id": "111111111111"},
+                           {"action": "skip", "item_id": "111111111111"}]

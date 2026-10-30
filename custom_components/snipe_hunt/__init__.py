@@ -16,8 +16,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 from .const import CONF_URL, DOMAIN, FRONTEND_URL, OPT_TABS, upgrade_tabs
+from .helpers import loaded_entries
 from .coordinator import SnipeHuntConfigEntry, SnipeHuntCoordinator
 from .services import async_setup_services
 from .websocket import async_setup_websocket
@@ -62,9 +66,54 @@ async def async_setup_entry(hass: HomeAssistant, entry: SnipeHuntConfigEntry) ->
     coordinator = SnipeHuntCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+    _listen_for_notification_taps(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_changed))
     return True
+
+
+# The bot's alerts carry buttons (notify.pick_actions): "SNIPE_HUNT_SNIPED_<item>" and
+# "SNIPE_HUNT_SKIP_<item>". The companion app fires this event when one is tapped.
+NOTIFICATION_EVENT = "mobile_app_notification_action"
+ACTION_PREFIX = "SNIPE_HUNT_"
+TAP_ACTIONS = {"SNIPED": "sniped", "SKIP": "skip"}
+LISTENER_KEY = "notification_tap_listener"
+
+
+def _listen_for_notification_taps(hass: HomeAssistant) -> None:
+    """One listener for all bots: a tap on an alert button becomes the bot's action."""
+    store = hass.data.setdefault(DOMAIN, {})
+    if store.get(LISTENER_KEY):
+        return
+
+    async def tapped(event) -> None:
+        action = str(event.data.get("action") or "")
+        if not action.startswith(ACTION_PREFIX):
+            return
+        op, _, item_id = action[len(ACTION_PREFIX):].rpartition("_")
+        bot_action = TAP_ACTIONS.get(op)
+        if not bot_action or not item_id.isdigit():
+            return
+        coordinator = _bot_showing(hass, item_id)
+        if coordinator is None:
+            return
+        try:
+            await coordinator.async_action(bot_action, item_id=item_id)
+        except Exception as err:  # noqa: BLE001  a tap must never raise into the event loop
+            _LOGGER.warning("Snipe Hunt: %s on %s from a notification failed: %s", bot_action, item_id, err)
+
+    store[LISTENER_KEY] = hass.bus.async_listen(NOTIFICATION_EVENT, tapped)
+
+
+def _bot_showing(hass: HomeAssistant, item_id: str):
+    """The bot whose snapshot has this item (the first bot when none does)."""
+    entries = loaded_entries(hass)
+    for entry in entries:
+        data = entry.runtime_data.data or {}
+        for key in ("picks", "jackpots", "bid_now"):
+            if any(str(p.get("item_id")) == item_id for p in data.get(key) or []):
+                return entry.runtime_data
+    return entries[0].runtime_data if entries else None
 
 
 async def _async_options_changed(hass: HomeAssistant, entry: SnipeHuntConfigEntry) -> None:

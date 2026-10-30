@@ -190,6 +190,8 @@ const closesPill = (p, short) => {
 // The card's own price trend from the ledger (the bot's ledger.py): last 30 days against before.
 const trendPill = p => p.trend ? tpill((p.trend.dir === 'up' ? '📈 +' : '📉 ') + p.trend.pct + '%', p.trend.dir === 'up' ? '#2e7d32' : '#c62828',
   `This card's sales: ~${money(p.trend.was)} before, ~${money(p.trend.now)} in the last 30 days (${p.trend.n} sales)`) + ' ' : '';
+// Win odds from the ledger: how many recorded sales of the exact card closed at or under what you'd pay.
+const oddsTxt = p => p.win_odds ? ` · <span title="${p.win_odds.under} of the last ${p.win_odds.n} sales of this card closed at or under what you'd pay here, shipping included">wins <b style="color:${p.win_odds.pct >= 50 ? '#2e7d32' : p.win_odds.pct >= 25 ? '#f9a825' : '#e53935'}">${p.win_odds.under}/${p.win_odds.n}</b></span>` : '';
 const sniped = p => {
   if (p.snipe == null) return markedPill(p);
   const over = p.bid_now != null && Number(p.bid_now) >= Number(p.snipe);
@@ -366,7 +368,7 @@ const sweepTxt = p => (p.labels || p.landed != null) ? `<div style="font-size:12
   (p.ship_note ? `<div style="font-size:12px;margin-top:2px;color:#ef6c00">⚠️ ${esc(p.ship_note)}</div>` : '') : '';
 const pickLine = (p, lead, extra) => {
   const t = TIER[p.tier] || ['•', '#546e7a'];
-  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'}${p.capped ? ', cut to fit your ceiling' : ''})</span>`;
+  const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_ledger ? 'the ledger\'s 25th-percentile close' : p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'}${p.capped ? ', cut to fit your ceiling' : ''})</span>${oddsTxt(p)}`;
   const now = p.bid_now != null && Number(p.bid_now) !== Number(p.price) ? ` · <b>now ${money(p.bid_now)}</b>` : '';
   const ends = p.is_auction && p.end_time ? ` · ends ${when(p.end_time)}` : '';
   return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
@@ -472,7 +474,7 @@ const tile = p => {
     <div class="tile-body">
       <a class="title clamp" href="${esc(p.url)}" target="_blank" rel="noopener">${(TIER[p.tier] || [''])[0]} ${esc(p.card)}</a>
       <div class="tile-price"><b>${money(payNow(p))}</b> <span class="muted">${p.is_auction ? 'now · w/ ship' : 'w/ ship'}</span></div>
-      <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}</div>
+      <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}${oddsTxt(p)}</div>
       ${offMeter(share)}
       ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : (p.marked ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Added to Gixen${p.marked.max ? ' at ' + cents(p.marked.max) : ''}</div>` : '')}
       ${trendPill(p)}${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
