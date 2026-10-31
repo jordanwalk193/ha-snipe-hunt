@@ -1526,11 +1526,8 @@ const STYLE = `
   .strip-cap { font-size: 12px; margin-top: 8px; }
   .tile { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; min-width: 0;
           background: var(--secondary-background-color, #8881); border: 1px solid var(--divider-color, #8884); border-top: 3px solid #546e7a;
-          transition: transform .15s ease, box-shadow .15s ease; animation: rise .35s ease both; }
+          transition: transform .15s ease, box-shadow .15s ease; }
   .tile:hover { transform: translateY(-3px); box-shadow: 0 10px 24px #0006; }
-  .strip .tile:nth-child(2) { animation-delay: .04s; } .strip .tile:nth-child(3) { animation-delay: .08s; } .strip .tile:nth-child(4) { animation-delay: .12s; }
-  .strip .tile:nth-child(5) { animation-delay: .16s; } .strip .tile:nth-child(6) { animation-delay: .2s; } .strip .tile:nth-child(n+7) { animation-delay: .24s; }
-  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .tile-img::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 35%; background: linear-gradient(transparent, #0005); pointer-events: none; }
   .newtag { position: absolute; top: 8px; right: 8px; background: #7c4dff; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 1px;
             padding: 3px 7px; border-radius: 8px; box-shadow: 0 1px 4px #0006; z-index: 1; }
@@ -1557,10 +1554,10 @@ const STYLE = `
              overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
     .tile { scroll-snap-align: start; }
   }
-  @media (prefers-reduced-motion: reduce) { .tile, .tile:hover { transition: none; transform: none; animation: none; } .tile.jp { animation: none; } .hero { animation: none; } .pulse { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tile, .tile:hover { transition: none; transform: none; } .tile.jp { animation: none; } .pulse { animation: none; } }
   .pill[data-end] { font-variant-numeric: tabular-nums; }
   /* command center */
-  .hero { position: relative; margin: 10px 0 2px; padding: 16px 18px 14px; border-radius: 18px; color: #fff; overflow: hidden; animation: rise .4s ease both;
+  .hero { position: relative; margin: 10px 0 2px; padding: 16px 18px 14px; border-radius: 18px; color: #fff; overflow: hidden;
           background: radial-gradient(120% 150% at 0% 0%, var(--accent, #c41e3a) 0%, #1c2140 52%, #0e1120 100%); box-shadow: 0 12px 30px #0005; }
   .hero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(55% 80% at 100% 0%, #ffffff1f, transparent 60%); pointer-events: none; }
   .hero > * { position: relative; }
