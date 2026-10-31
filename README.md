@@ -127,7 +127,7 @@ accent: "#c41e3a"       # optional
 | `to_file` | Delivered cards to put in the binder, with Filed buttons |
 | `on_the_way` | Cards in the mail and wins not yet shipped |
 | `binder` | A searchable list of every card |
-| `health` | Bot health and its buttons |
+| `health` | Bot health and its buttons, with where the bot's market sweep is (a bot with `status.deep`) |
 
 ## Options
 

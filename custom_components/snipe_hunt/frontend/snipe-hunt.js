@@ -1300,6 +1300,7 @@ const PANELS = {
     <div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5">
       ${c.s.alerts_enabled === false ? '🔕 Phone alerts are paused.<br>' : ''}
       ${a.sales_based} of ${a.live_picks} live maxes come from real sold prices; the rest are estimates.<br>
+      ${a.deep ? (a.deep.on ? 'Market sweep (the standing market, a few pages an hour): ' + esc(a.deep.band) + ', pass ' + (a.deep.passes + 1) + (a.deep.last_pass ? ', last full pass ' + ago(new Date(a.deep.last_pass * 1000).toISOString()) : '') + ', ' + Number(a.deep.found || 0).toLocaleString() + ' listings swept in.<br>' : 'Market sweep off (deep_pages is 0).<br>') : ''}
       ${a.cost_month != null ? 'Claude: ' + money(a.cost_today) + ' today (' + (a.calls_today || 0) + ' calls), ' + money(a.cost_month) + ' this month.<br>' : ''}
       ${a.held_overnight ? a.held_overnight + ' alerts held for the morning.<br>' : ''}
       ${a.skipped ? a.skipped + ' picks hidden with Skip.<br>' : ''}
