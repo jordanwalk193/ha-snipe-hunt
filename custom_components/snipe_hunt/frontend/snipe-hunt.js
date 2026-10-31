@@ -638,22 +638,24 @@ const PANELS = {
     const hour = c.allPicks.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) < HOUR).length;
     const next = endingSoon(c)[0];
     const hs = (label, value, color, sub) => `<div class="hs"${color ? ` style="border-color:${color}66;background:${color}2a"` : ''}><b>${value}</b><small>${label}</small>${sub ? `<small class="hs-sub">${sub}</small>` : ''}</div>`;
+    const noGixen = c.d.gixen_account === false;   // a bot with no Gixen account
+    const bought = sv && sv.n > 0;
     const stats = [
       hs('LIVE PICKS', c.allPicks.length, null, fresh ? `✨ ${fresh} new` : ''),
       hs(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#ff5252' : '#69f0ae'),
-      hs('IN GIXEN', c.gixenOn ? c.snipes.length : '–', '#b388ff'),
+      noGixen ? hs('AUCTIONS LIVE', c.allPicks.filter(p => p.is_auction).length, '#b388ff') : hs('IN GIXEN', c.gixenOn ? c.snipes.length : '–', '#b388ff'),
       hs('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), pipe.unpaid_total ? '#40c4ff' : null),
-      hs('SAVED · MONTH', sv ? '$' + Math.round(sv.saved) : '–', '#69f0ae', sv ? `${sv.n} cards · paid ${sv.pct}% of value` : ''),
+      hs('SAVED · MONTH', bought ? '$' + Math.round(sv.saved) : '–', bought ? '#69f0ae' : null, bought ? `${sv.n} cards · paid ${sv.pct}% of value` : 'no buys yet'),
     ];
     const nextHtml = !next ? `<div class="hero-next"><div style="flex:1"><div class="hero-kicker">NEXT TO END</div><div class="muted" style="font-size:13px;margin-top:4px">No picked auction is live${c.hidden ? ` outside Gixen (${c.hidden} already sniped)` : ''}. New ones land within the hour.</div></div></div>`
       : `<div class="hero-next" data-row>
         ${next.image ? `<a href="${esc(next.url)}" target="_blank" rel="noopener"><img src="${esc(next.image.replace('s-l225', 's-l500'))}" alt=""></a>` : ''}
         <div style="flex:1;min-width:0">
-          <div class="hero-kicker">NEXT TO END${hour ? ` · <b style="color:#ff8a80">${hour} IN THE NEXT HOUR</b>` : ''}${next.snipe != null || next.marked ? ' · ✓ IN GIXEN' : ''}</div>
+          <div class="hero-kicker">NEXT TO END${hour ? ` · <b style="color:#ff8a80">${hour} IN THE NEXT HOUR</b>` : ''}${!noGixen && (next.snipe != null || next.marked) ? ' · ✓ IN GIXEN' : ''}</div>
           <a class="hero-title" href="${esc(next.url)}" target="_blank" rel="noopener">${(TIER[next.tier] || [''])[0]} ${esc(next.card)}</a>
           <div style="font-size:13px"><b style="font-size:16px">${money(payNow(next))}</b> <span class="muted">now w/ ship</span>${next.max != null ? ` · max <b>${cents(next.max)}</b>` : ''} · worth ~<b>${worth(next.value)}</b>${shareNow(next) == null ? '' : shareNow(next) < 1 ? ` · <b style="color:#69f0ae">${Math.round(100 * (1 - shareNow(next)))}% off</b>` : ' · <b style="color:#ff8a80">over its value now</b>'}${next.bids != null ? ` · ${next.bids} bid${next.bids === 1 ? '' : 's'}` : ''}</div>
           <div class="muted" style="font-size:12px;margin-top:3px">ends ${when(next.end_time)} · ${esc(next.seller)}${closesPill(next, true) ? '' : ''}</div>
-          <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${copyBtn('Item #', next.item_id)}${next.snipe == null && !next.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : ''}${markBtn(next)}${binBtn(next)}</div>
+          <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${copyBtn('Item #', next.item_id)}${noGixen ? linkBtn('Bid on eBay ↗', next.url, '#1e88e5') : (next.snipe == null && !next.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(next)}${binBtn(next)}</div>
         </div>
         <div class="hero-clock" style="color:${clockColor(msLeft(next.end_time))}"><span data-end="${esc(next.end_time)}" data-big>${bigClock(msLeft(next.end_time))}</span><small>LEFT</small></div>
       </div>`;
