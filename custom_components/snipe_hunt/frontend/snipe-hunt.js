@@ -140,11 +140,19 @@ const context = (card) => {
   const feed = card.feed, d = feed.data, s = d.settings || {};
   const gixen = d.gixen || {};
   const gixenOn = !!gixen.available;
-  const picks = (d.picks || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
+  const all = (d.picks || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
   const windowMs = (Number(s.need_snipe_hours) || 24) * HOUR;
-  const soon = picks.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) < windowMs && GOOD.includes(p.tier));
+  const soon = all.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) < windowMs && GOOD.includes(p.tier));
+  // A pick already in Gixen (a snipe on its list, or your own "Added to Gixen"
+  // mark) steps aside so other steals surface. The 🙈 chip brings them back.
+  const covered = new Set(all.filter(inGixen).map(p => p.item_id));
+  (gixen.snipes || []).forEach(x => covered.add(x.item_id));
+  const hiding = store('hide_gixen', 'on') === 'on';
+  const picks = hiding ? all.filter(p => !covered.has(p.item_id)) : all;
   return {
     d, s, card, picks, gixen, gixenOn, windowMs,
+    allPicks: all, covered, hiding, hidden: all.length - picks.length,
+    inGixen: x => covered.has(x.item_id),
     gixenOff: d.gixen == null,
     hours: Number(s.need_snipe_hours) || 24,
     cards: d.cards || [],
@@ -167,6 +175,16 @@ const badge = p => {
     return pill('⏱ ' + left(p.end_time), ms < 2 * HOUR ? '#e53935' : (ms < 24 * HOUR ? '#fb8c00' : '#546e7a'));
   }
   return pill(p.best_offer ? 'Offer' : 'Buy now', '#1e88e5');
+};
+// In Gixen already: a snipe on Gixen's list, or your own "Added to Gixen" mark.
+const inGixen = p => p.snipe != null || !!p.marked;
+// The chip that hides or shows them again (hidden by default, so other steals surface).
+const gixenChip = c => {
+  const n = c.allPicks.filter(c.inGixen).length;
+  if (!n) return '';
+  return c.hiding
+    ? `<span class="btn" role="button" data-do="set" data-key="hide_gixen" data-value="off" title="${n} pick${n === 1 ? ' is' : 's are'} already in Gixen and hidden here so other steals come to the surface. Tap to show them.">🙈 ${n} in Gixen hidden</span>`
+    : `<span class="btn on" role="button" data-do="set" data-key="hide_gixen" data-value="on" title="Picks already in Gixen are showing. Tap to hide them again.">👁 ${n} in Gixen shown</span>`;
 };
 // "Added to Gixen": your own mark on a pick, until Gixen's list shows the snipe.
 const markedPill = p => p.snipe == null && p.marked
@@ -276,7 +294,7 @@ const jackpotBanner = c => {
 };
 // Auctions ending within the hour at 10% of their value or less (the bot's bidnow.py).
 const bidNowList = c => {
-  const live = (c.d.bid_now || []).filter(p => p.end_time && msLeft(p.end_time) > 0);
+  const live = (c.d.bid_now || []).filter(p => p.end_time && msLeft(p.end_time) > 0 && !(c.hiding && c.inGixen(p)));
   if (!live.length) return '';
   return `<div class="warn" style="margin:0 0 10px;padding:10px 12px">
     <div style="font-size:12px;letter-spacing:2px;font-weight:700;margin-bottom:4px">⏱️ BID NOW, THINK LATER · ENDING WITHIN THE HOUR AT 90%+ OFF</div>
@@ -296,7 +314,7 @@ const radarStatus = r => r.hot
     ? `<b style="color:#2e7d32">In range</b> · turns hot ${r.opens_at ? when(r.opens_at) : 'soon'}`
     : `<b>${money(r.gap)}</b> above the ${r.kind === 'jackpot' ? 'jackpot' : 'bid-now'} line`;
 const radarList = c => {
-  const all = (c.d.radar || []).filter(r => !(r.is_auction && r.end_time && msLeft(r.end_time) <= 0));
+  const all = (c.d.radar || []).filter(r => !(r.is_auction && r.end_time && msLeft(r.end_time) <= 0) && !(c.hiding && c.inGixen(r)));
   if (!all.length) return '';
   const top = all.slice(0, Number(c.card.config.count) || 5);
   return `<div class="radar">
@@ -522,7 +540,7 @@ const PANELS = {
     const hour = live.filter(p => msLeft(p.end_time) < HOUR).length;
     const unsniped = live.filter(p => p.snipe == null && msLeft(p.end_time) < c.windowMs).length;
     return `<div class="strip-head">${chips('ending_order', 'soon', [['soon', '⏱ Soonest'], ['best', '💎 Best deal']], order)}
-      <div class="muted strip-cap">${live.length} live${hour ? ` · <b style="color:#e53935">${hour} in the last hour</b>` : ''}${c.gixenOn && unsniped ? ` · ${unsniped} with no snipe` : ''}</div></div>` +
+      <div class="muted strip-cap">${live.length} live${hour ? ` · <b style="color:#e53935">${hour} in the last hour</b>` : ''}${c.gixenOn && unsniped ? ` · ${unsniped} with no snipe` : ''} ${gixenChip(c)}</div></div>` +
       strip(sorted.slice(0, n).map(tile), live.length > n ? `<div class="row">${navBtn(`All ${live.length} on Steals`, 'steals')}</div>` : '');
   }],
 
@@ -548,7 +566,7 @@ const PANELS = {
       ${linkBtn('eBay ↗', ebayUrl(c.d))}
     </div>
     <div class="muted" style="font-size:12px;margin-top:10px;line-height:1.5">
-      <span class="dot" style="background:${color}"></span>${a.listings} listings watched · ${c.picks.length} live picks · searched ${ago(a.last_search)}
+      <span class="dot" style="background:${color}"></span>${a.listings} listings watched · ${c.allPicks.length} live picks${c.hidden ? ` · <span title="Already in Gixen; hidden on the lists so other steals surface">${c.hidden} in Gixen</span>` : ''} · searched ${ago(a.last_search)}
       ${fresh ? `<br>${last.ok ? '✓' : '⚠️'} ${esc(last.message)}` : ''}
     </div></div>`;
   }],
@@ -614,6 +632,37 @@ const PANELS = {
     return `<div style="padding-top:10px">` + grid(2, [box('SAVED THIS MONTH', s.month || {saved: 0}), box('SAVED IN ALL', s.all)]) +
       `<div class="muted" style="font-size:12px;margin-top:8px">${s.all.n} bought picks: paid ${money(s.all.paid)} for ${money(s.all.value)} of cards, ${s.all.pct}% of value. Value is the bot's going rate when it picked the card; paid is the price before shipping.</div>` +
       (s.best ? `<div class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0;margin-top:6px">${s.best.image ? `<img src="${esc(s.best.image)}" style="height:74px;border-radius:6px">` : ''}<div><div class="muted" style="font-size:11px;letter-spacing:2px">🏆 BEST STEAL</div><b>${esc(s.best.card)}</b><div style="font-size:13px">${money(s.best.paid)} for a ${worth(s.best.value)} card · ${s.best.pct}% of value${s.best.date ? ' · ' + esc(s.best.date) : ''}</div></div></div>` : '') + `</div>`;
+  }],
+
+  hall: ['Hall of Fame', false, c => {
+    // The ten best steals of all time, from the whole collection: each card you
+    // own against what the same card last sold for (the bot's ledger), or the
+    // bot's value for a pick the ledger can't price. The one list that says
+    // what the whole program has been worth.
+    const h = (c.d.brag || {}).hall;
+    if (!h) return empty('Update the bot to see this: it needs a version with the Hall of Fame.');
+    const t = h.totals || {};
+    if (!(h.top || []).length) return empty(t.cards
+      ? `None of your ${t.cards} priced card${t.cards === 1 ? ' is' : 's are'} 20% or more under what the same card sells for yet.`
+      : 'Nothing is priced yet. The hall fills in as the ledger records sales of the cards you own.');
+    const n = Number(c.card.config.count) || 10;
+    const medal = i => ['🥇', '🥈', '🥉'][i] || String(i + 1);
+    const bot = h.bot || {};
+    return `<div style="padding-top:10px"></div>` + grid(4, [
+      stat('PAID', '$' + Math.round(t.paid || 0).toLocaleString(), '#546e7a', '💳'),
+      stat('WORTH', '$' + Math.round(t.worth || 0).toLocaleString(), '#1e88e5', '💎'),
+      stat('UNDER VALUE', '$' + Math.round(t.saved || 0).toLocaleString(), t.saved >= 0 ? '#2e7d32' : '#c62828', '💰'),
+      stat('PAID OF VALUE', t.pct == null ? '–' : t.pct + '%', '#ef6c00', '🏷️'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">${t.cards} card${t.cards === 1 ? '' : 's'} priced by real sales of the same card${t.unpriced ? ` (${t.unpriced} more with no sale on record yet)` : ''}${bot.n ? ` · <b style="color:var(--primary-text-color)">${bot.n}</b> bought as the bot's picks, <b style="color:#2e7d32">${worth(bot.saved)}</b> under value` : ''}</div>` +
+      cap(`THE ${n === 10 ? 'TEN' : n} BEST STEALS OF ALL TIME`) +
+      h.top.slice(0, n).map((x, i) => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:7px 0">
+        <div class="rank" style="${i < 3 ? 'font-size:20px;width:28px' : ''}">${medal(i)}</div>
+        ${x.image ? `<img src="${esc(x.image)}" loading="lazy" style="height:52px;width:38px;object-fit:cover;border-radius:5px">` : ''}
+        <div style="flex:1;min-width:0"><b>${esc(x.card)}</b>
+          <div class="muted" style="font-size:12px">${money(x.paid)} for a ${worth(x.value)} card · <b style="color:var(--primary-text-color)">${worth(x.saved)} under</b> · ${x.by === 'sales' ? 'by real sales' : "the bot's value"}${x.bot ? ' · 🤖 bot pick' : ''}</div></div>
+        <div style="font-size:18px;font-weight:700;color:#2e7d32;flex:none">-${x.off_pct}%</div></div>`).join('') +
+      cap('HALL OF FAME CARD · SAFE TO SHARE (NO SELLERS OR ITEM NUMBERS)') +
+      `<pre class="brag">${esc(h.card)}</pre>`;
   }],
 
   brag: ['Brag board', false, c => {
@@ -878,8 +927,8 @@ const PANELS = {
 
   all_picks: ['Every live pick', true, c => {
     const tier = store('tier', 'all'), kind = store('kind', 'all'), cover = store('cover', 'all'), sort = store('sort', 'best'), limit = store('limit', 'page');
-    let picks = c.picks.slice();
-    const total = picks.length;
+    let picks = (cover === 'sniped' ? c.allPicks : c.picks).slice();
+    const total = c.allPicks.length;
     const edges = picks.filter(p => EDGE[p.edge]).length, why = store('why', 'all'), label = store('label', 'all');
     const labelCount = l => picks.filter(p => (p.labels || []).includes(l)).length;
     const labelChips = Object.keys(LABEL).filter(l => labelCount(l)).map(l => [l, LABEL[l][0] + ' (' + labelCount(l) + ')']);
@@ -1205,15 +1254,16 @@ const PANELS = {
     const lb = (c.d.lowball || {}).targets, offers = (c.d.offers || []).filter(o => o.value != null);
     const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length],
       ['ending', '⏱ Ending soon', 'ending_list', endingSoon(c).length], ['buy', '⚡ Buy now', 'buy_list', buyNowSteals(c).length],
-      ['radar', '🎯 Radar', 'radar', (c.d.radar || []).length],
+      ['radar', '🎯 Radar', 'radar', (c.d.radar || []).filter(r => !(c.hiding && c.inGixen(r))).length],
       ['bundles', '📦 Bundles', 'bundles', (c.d.bundles || []).length], ['under', 'Under $20', 'under'],
       ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
       ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
       ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
+    const chip = gixenChip(c);
     return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + bidNowList(c) + droppedList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
-      PANELS[chosen[2]][2](c);
+      (chip ? `<div class="row" style="margin-top:2px">${chip}</div>` : '') + PANELS[chosen[2]][2](c);
   }],
 
   incoming: ['Incoming', false, c => PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
@@ -1586,7 +1636,7 @@ class SnipeHuntStrategy {
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
         section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('Market trends', 'mdi:trending-up'), panel('trends')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
-        section(heading('Brag board', 'mdi:trophy-award'), panel('brag')),
+        section(heading('Hall of Fame', 'mdi:trophy-variant'), panel('hall'), heading('Brag board', 'mdi:trophy-award'), panel('brag')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
           ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
             {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
