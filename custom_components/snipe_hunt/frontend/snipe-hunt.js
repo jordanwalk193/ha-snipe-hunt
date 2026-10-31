@@ -651,7 +651,7 @@ const PANELS = {
         <div style="flex:1;min-width:0">
           <div class="hero-kicker">NEXT TO END${hour ? ` · <b style="color:#ff8a80">${hour} IN THE NEXT HOUR</b>` : ''}${next.snipe != null || next.marked ? ' · ✓ IN GIXEN' : ''}</div>
           <a class="hero-title" href="${esc(next.url)}" target="_blank" rel="noopener">${(TIER[next.tier] || [''])[0]} ${esc(next.card)}</a>
-          <div style="font-size:13px"><b style="font-size:16px">${money(payNow(next))}</b> <span class="muted">now w/ ship</span>${next.max != null ? ` · max <b>${cents(next.max)}</b>` : ''} · worth ~<b>${worth(next.value)}</b>${shareNow(next) != null ? ` · <b style="color:#69f0ae">${Math.round(100 * (1 - shareNow(next)))}% off</b>` : ''}${next.bids != null ? ` · ${next.bids} bid${next.bids === 1 ? '' : 's'}` : ''}</div>
+          <div style="font-size:13px"><b style="font-size:16px">${money(payNow(next))}</b> <span class="muted">now w/ ship</span>${next.max != null ? ` · max <b>${cents(next.max)}</b>` : ''} · worth ~<b>${worth(next.value)}</b>${shareNow(next) == null ? '' : shareNow(next) < 1 ? ` · <b style="color:#69f0ae">${Math.round(100 * (1 - shareNow(next)))}% off</b>` : ' · <b style="color:#ff8a80">over its value now</b>'}${next.bids != null ? ` · ${next.bids} bid${next.bids === 1 ? '' : 's'}` : ''}</div>
           <div class="muted" style="font-size:12px;margin-top:3px">ends ${when(next.end_time)} · ${esc(next.seller)}${closesPill(next, true) ? '' : ''}</div>
           <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${copyBtn('Item #', next.item_id)}${next.snipe == null && !next.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : ''}${markBtn(next)}${binBtn(next)}</div>
         </div>
