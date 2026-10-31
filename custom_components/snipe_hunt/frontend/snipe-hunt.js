@@ -149,6 +149,7 @@ const context = (card) => {
   (gixen.snipes || []).forEach(x => covered.add(x.item_id));
   const hiding = store('hide_gixen', 'on') === 'on';
   const picks = hiding ? all.filter(p => !covered.has(p.item_id)) : all;
+  noteSeen(all);
   return {
     d, s, card, picks, gixen, gixenOn, windowMs,
     allPicks: all, covered, hiding, hidden: all.length - picks.length,
@@ -389,7 +390,7 @@ const pickLine = (p, lead, extra) => {
   const max = p.max == null ? '' : ` · <b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_ledger ? 'the ledger\'s 25th-percentile close' : p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'}${p.capped ? ', cut to fit your ceiling' : ''})</span>${oddsTxt(p)}`;
   const now = p.bid_now != null && Number(p.bid_now) !== Number(p.price) ? ` · <b>now ${money(p.bid_now)}</b>` : '';
   const ends = p.is_auction && p.end_time ? ` · ends ${when(p.end_time)}` : '';
-  return `<div data-row class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
+  return `<div data-row data-find="${findKey(p)}" class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
     ${lead}${thumb(p, 54, 74)}
     <div style="flex:1;min-width:0">
       <div style="display:flex;gap:8px;justify-content:space-between;align-items:flex-start">
@@ -397,7 +398,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -473,26 +474,122 @@ const offMeter = share => {
   const color = off >= 75 ? '#00c853' : off >= 50 ? '#43a047' : off >= 25 ? '#f9a825' : '#78909c';
   return `<div class="meter" title="How far under its value you would pay, shipping included"><span style="width:${off}%;background:${color}"></span></div>`;
 };
+// ---- live clocks: anything with data-end is re-read every second (SnipeHuntCard.tick)
+const clockTxt = ms => {
+  if (ms <= 0) return 'ended';
+  const sec = Math.floor(ms / 1000), m = Math.floor(sec / 60), h = Math.floor(m / 60);
+  if (h < 1) return m + 'm ' + String(sec % 60).padStart(2, '0') + 's';
+  if (h < 48) return h + 'h ' + String(m % 60).padStart(2, '0') + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
+};
+const bigClock = ms => {
+  if (ms <= 0) return 'ENDED';
+  const sec = Math.floor(ms / 1000), m = Math.floor(sec / 60), h = Math.floor(m / 60);
+  if (h >= 48) return Math.floor(h / 24) + 'd ' + String(h % 24).padStart(2, '0') + 'h';
+  return h + ':' + String(m % 60).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+};
+const liveClock = (iso, cls = 'clock', extra = '') => {
+  const ms = msLeft(iso);
+  return `<span class="${cls}" data-end="${esc(iso)}" style="background:${clockColor(ms)};${extra}">⏱ ${clockTxt(ms)}</span>`;
+};
+
+// ---- what you have already seen: a pick's first sighting on this browser, so a
+// ✨ New badge marks what landed since you last looked (for 12 hours).
+const FRESH = 12 * HOUR;
+const seenKey = () => 'ws_' + scoped('seen');
+let seenCache = null, seenFor = null;
+const seenMap = () => {
+  if (seenCache && seenFor === seenKey()) return seenCache;
+  seenFor = seenKey();
+  try { seenCache = JSON.parse(localStorage.getItem(seenFor) || 'null'); } catch (e) { seenCache = null; }
+  return seenCache;
+};
+const noteSeen = picks => {
+  const now = Date.now();
+  let seen = seenMap(), changed = false;
+  if (!seen) {   // first visit: nothing is new yet
+    seen = {}; picks.forEach(p => { seen[p.item_id] = now - FRESH; }); changed = true;
+  }
+  const live = new Set(picks.map(p => p.item_id));
+  picks.forEach(p => { if (!(p.item_id in seen)) { seen[p.item_id] = now; changed = true; } });
+  Object.keys(seen).forEach(id => { if (!live.has(id) && now - seen[id] > 7 * 24 * HOUR) { delete seen[id]; changed = true; } });
+  seenCache = seen; seenFor = seenKey();
+  if (changed) try { localStorage.setItem(seenFor, JSON.stringify(seen)); } catch (e) { /* not kept past this visit */ }
+};
+const isFresh = p => { const t = (seenMap() || {})[p.item_id]; return t != null && Date.now() - t < FRESH; };
+const newPill = p => isFresh(p) ? pill('✨ New', '#7c4dff') + ' ' : '';
+const findKey = p => esc([p.card || p.title, p.seller, p.year, p.tier, (p.labels || []).join(' '), p.item_id].join(' ').toLowerCase());
+
+// ---- small charts
+const ring = (pct, color, label, sub) => {
+  const r = 26, round = 2 * Math.PI * r, v = Math.max(0, Math.min(100, Number(pct) || 0));
+  return `<div class="ring"><svg viewBox="0 0 64 64" width="76" height="76" aria-label="${esc(sub || label)}">
+    <circle cx="32" cy="32" r="${r}" fill="none" stroke="#8883" stroke-width="7"/>
+    <circle cx="32" cy="32" r="${r}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(v / 100 * round).toFixed(1)} ${round.toFixed(1)}" transform="rotate(-90 32 32)"/>
+    <text x="32" y="37" text-anchor="middle" font-size="15" font-weight="800" fill="currentColor">${label}</text></svg>${sub ? `<div class="ring-sub">${sub}</div>` : ''}</div>`;
+};
+const hbar = (label, value, max, color, text) => `<div class="hbar"><div class="hbar-label">${label}</div>
+  <div class="hbar-track"><span style="width:${max ? Math.max(2, Math.round(value / max * 100)) : 0}%;background:${color}"></span></div><div class="hbar-val">${text}</div></div>`;
+const stack = (parts, total) => `<div class="stack">${parts.filter(p => p[1] > 0).map(([label, n, color]) => `<span style="flex:${n};background:${color}" title="${esc(label)}: ${n}"></span>`).join('')}</div>
+  <div class="legend">${parts.filter(p => p[1] > 0).map(([label, n, color]) => `<span><span class="dot" style="background:${color}"></span>${esc(label)} <b>${n}</b>${total ? ` <span class="muted">${Math.round(n / total * 100)}%</span>` : ''}</span>`).join('')}</div>`;
+
+// The 24 hours ahead as a line: a dot where each picked auction ends, hatched
+// where your quiet hours fall, so you can see when tonight needs you.
+const quietSpans = (s, now, span) => {
+  if (!s.quiet_hours || !s.quiet_start || !s.quiet_end) return [];
+  const at = (day, hm) => { const [h, m] = String(hm).split(':').map(Number); const d = new Date(now); d.setDate(d.getDate() + day); d.setHours(h, m || 0, 0, 0); return d.getTime(); };
+  const out = [];
+  for (let day = -1; day <= 1; day++) {
+    let a = at(day, s.quiet_start), b = at(day, s.quiet_end);
+    if (b <= a) b += 24 * HOUR;
+    const x = Math.max(a, now), y = Math.min(b, now + span);
+    if (y > x) out.push([(x - now) / span * 100, (y - x) / span * 100]);
+  }
+  return out;
+};
+const timeline = c => {
+  const span = 24 * HOUR, now = Date.now();
+  const ends = c.allPicks.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) > 0 && msLeft(p.end_time) < span)
+    .sort((x, y) => x.end_time < y.end_time ? -1 : 1);
+  if (!ends.length) return '';
+  const quiet = quietSpans(c.s, now, span).map(([l, w]) => `<div class="tl-quiet" style="left:${l.toFixed(1)}%;width:${w.toFixed(1)}%" title="Quiet hours: alerts wait for the morning"></div>`).join('');
+  const lanes = [];   // stack dots that land within the same stretch
+  const dots = ends.map(p => {
+    const x = msLeft(p.end_time) / span * 100;
+    let lane = 0; while (lanes[lane] != null && x - lanes[lane] < 2.2) lane++;
+    lanes[lane] = x;
+    const t = TIER[p.tier] || ['', '#546e7a'];
+    return `<a class="tl-dot${c.inGixen(p) ? ' got' : ''}" href="${esc(p.url)}" target="_blank" rel="noopener" style="left:${x.toFixed(2)}%;top:${4 + (lane % 3) * 10}px;background:${t[1]}"
+      title="${esc(p.card)} · ends ${when(p.end_time)} · now ${money(payNow(p))}${p.max != null ? ' · max ' + cents(p.max) : ''}${c.inGixen(p) ? ' · in Gixen' : ''}"></a>`;
+  }).join('');
+  const ticks = [];
+  for (let h = 0; h <= 24; h += 4) ticks.push(`<span style="left:${h / 24 * 100}%">${h === 0 ? 'now' : h === 24 ? '+24h' : new Date(now + h * HOUR).toLocaleTimeString([], {hour: 'numeric'})}</span>`);
+  const got = ends.filter(p => c.inGixen(p)).length;
+  return `<div class="tl"><div class="tl-cap">NEXT 24 HOURS · ${ends.length} AUCTION${ends.length === 1 ? '' : 'S'} END${got ? ` · ${got} IN GIXEN (RINGED)` : ''}${quiet ? ' · HATCHED = QUIET HOURS' : ''}</div>
+    <div class="tl-track">${quiet}${dots}</div><div class="tl-ticks">${ticks.join('')}</div></div>`;
+};
+
 const tile = p => {
   const ms = p.is_auction && p.end_time ? msLeft(p.end_time) : null;
   const share = shareNow(p), off = share == null ? null : Math.round(100 * (1 - share));
   const img = p.image ? p.image.replace('s-l225', 's-l500') : null;
   const corner = ms != null
-    ? `<span class="clock" style="background:${clockColor(ms)}">⏱ ${left(p.end_time)}</span>`
+    ? liveClock(p.end_time)
     : `<span class="clock" style="background:#1e88e5">${p.via_bin ? 'BIN ON AUCTION' : p.best_offer ? 'BUY / OFFER' : 'BUY NOW'}</span>`;
+  const edgeColor = p.jackpot ? '#d50000' : (TIER[p.tier] || ['', '#546e7a'])[1];
   const hot = p.jackpot ? ' jp' : (ms != null && ms < HOUR ? ' hot' : '');
   const buttons = p.is_auction
     ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + copyBtn('Item #', p.item_id) + (p.snipe == null && !p.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Buy / offer ↗' : 'Buy now ↗', p.url, '#1e88e5') + copyBtn('Item #', p.item_id);
-  return `<div class="tile${hot}" data-row>
+  return `<div class="tile${hot}" data-row data-find="${findKey(p)}" style="border-top-color:${edgeColor}">
     <a class="tile-img" href="${esc(p.url)}" target="_blank" rel="noopener">
       ${img ? `<img src="${esc(img)}" loading="lazy" alt="">` : '<div class="noimg">🃏</div>'}
-      ${corner}${off != null && off > 0 ? `<span class="off">-${off}%</span>` : ''}${p.jackpot ? '<span class="jptag">🚨 JACKPOT</span>' : ''}
+      ${corner}${off != null && off > 0 ? `<span class="off">-${off}%</span>` : ''}${p.jackpot ? '<span class="jptag">🚨 JACKPOT</span>' : ''}${isFresh(p) ? '<span class="newtag">✨ NEW</span>' : ''}
     </a>
     <div class="tile-body">
       <a class="title clamp" href="${esc(p.url)}" target="_blank" rel="noopener">${(TIER[p.tier] || [''])[0]} ${esc(p.card)}</a>
       <div class="tile-price"><b>${money(payNow(p))}</b> <span class="muted">${p.is_auction ? 'now · w/ ship' : 'w/ ship'}</span></div>
-      <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}${oddsTxt(p)}</div>
+      <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.value && saved(p) > 0 ? ` · <b style="color:#43a047">save ${worth(saved(p))}</b>` : ''}${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}${oddsTxt(p)}</div>
       ${offMeter(share)}
       ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : (p.marked ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Added to Gixen${p.marked.max ? ' at ' + cents(p.marked.max) : ''}</div>` : '')}
       ${trendPill(p)}${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
@@ -522,7 +619,57 @@ const endingSoon = (c, order = 'soon') => c.picks
     ? (x, y) => (shareAtMax(x) ?? 9) - (shareAtMax(y) ?? 9) || (x.end_time < y.end_time ? -1 : 1)
     : (x, y) => x.end_time < y.end_time ? -1 : 1);
 
+// Card type × ending hour: how far from the going rate those auctions closed.
+// Blue is cheap (a lowball max wins there), red is dear.
+const heatColor = share => share == null ? '#8882' : share <= 0.75 ? '#0288d1cc' : share <= 0.9 ? '#0288d177' : share <= 1.1 ? '#8884' : share <= 1.3 ? '#e5393577' : '#e53935cc';
+const heatGrid = types => {
+  const cell = g => g && g.n ? `<div style="background:${heatColor(g.share)}" title="${g.n} sold">${Math.round(100 * g.share)}%<small class="muted"> · ${g.n}</small></div>` : '<div class="muted" style="background:#8881">–</div>';
+  return `<div class="heat" style="grid-template-columns:minmax(70px,1fr) 1fr 1fr"><div class="hl"></div><div class="hl">🌤️ Daytime</div><div class="hl">🌙 Evening</div>` +
+    Object.entries(types).map(([name, g]) => `<div class="hl">${esc(name)}</div>${cell(g.day)}${cell(g.evening)}`).join('') + `</div>`;
+};
+
 const PANELS = {
+  hero: ['Command center', true, c => {
+    // The top of Tonight: who the bot is hunting, the numbers that matter, the
+    // next auction to end with a live clock, and the 24 hours ahead as a line.
+    const a = c.d.status, pipe = c.d.pipeline || {}, sv = (c.d.savings || {}).month, prof = c.d.profile || {};
+    const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
+    const fresh = c.allPicks.filter(isFresh).length;
+    const hour = c.allPicks.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) < HOUR).length;
+    const next = endingSoon(c)[0];
+    const hs = (label, value, color, sub) => `<div class="hs"${color ? ` style="border-color:${color}66;background:${color}2a"` : ''}><b>${value}</b><small>${label}</small>${sub ? `<small class="hs-sub">${sub}</small>` : ''}</div>`;
+    const stats = [
+      hs('LIVE PICKS', c.allPicks.length, null, fresh ? `✨ ${fresh} new` : ''),
+      hs(c.gixenOn ? 'NEED A SNIPE' : 'ENDING · ' + c.hours + 'H', c.need.length, c.need.length ? '#ff5252' : '#69f0ae'),
+      hs('IN GIXEN', c.gixenOn ? c.snipes.length : '–', '#b388ff'),
+      hs('TO PAY', '$' + Math.round(pipe.unpaid_total || 0), pipe.unpaid_total ? '#40c4ff' : null),
+      hs('SAVED · MONTH', sv ? '$' + Math.round(sv.saved) : '–', '#69f0ae', sv ? `${sv.n} cards · paid ${sv.pct}% of value` : ''),
+    ];
+    const nextHtml = !next ? `<div class="hero-next"><div style="flex:1"><div class="hero-kicker">NEXT TO END</div><div class="muted" style="font-size:13px;margin-top:4px">No picked auction is live${c.hidden ? ` outside Gixen (${c.hidden} already sniped)` : ''}. New ones land within the hour.</div></div></div>`
+      : `<div class="hero-next" data-row>
+        ${next.image ? `<a href="${esc(next.url)}" target="_blank" rel="noopener"><img src="${esc(next.image.replace('s-l225', 's-l500'))}" alt=""></a>` : ''}
+        <div style="flex:1;min-width:0">
+          <div class="hero-kicker">NEXT TO END${hour ? ` · <b style="color:#ff8a80">${hour} IN THE NEXT HOUR</b>` : ''}${next.snipe != null || next.marked ? ' · ✓ IN GIXEN' : ''}</div>
+          <a class="hero-title" href="${esc(next.url)}" target="_blank" rel="noopener">${(TIER[next.tier] || [''])[0]} ${esc(next.card)}</a>
+          <div style="font-size:13px"><b style="font-size:16px">${money(payNow(next))}</b> <span class="muted">now w/ ship</span>${next.max != null ? ` · max <b>${cents(next.max)}</b>` : ''} · worth ~<b>${worth(next.value)}</b>${shareNow(next) != null ? ` · <b style="color:#69f0ae">${Math.round(100 * (1 - shareNow(next)))}% off</b>` : ''}${next.bids != null ? ` · ${next.bids} bid${next.bids === 1 ? '' : 's'}` : ''}</div>
+          <div class="muted" style="font-size:12px;margin-top:3px">ends ${when(next.end_time)} · ${esc(next.seller)}${closesPill(next, true) ? '' : ''}</div>
+          <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${copyBtn('Item #', next.item_id)}${next.snipe == null && !next.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : ''}${markBtn(next)}${binBtn(next)}</div>
+        </div>
+        <div class="hero-clock" style="color:${clockColor(msLeft(next.end_time))}"><span data-end="${esc(next.end_time)}" data-big>${bigClock(msLeft(next.end_time))}</span><small>LEFT</small></div>
+      </div>`;
+    return `<div class="hero" style="--accent:${c.accent}">
+      <div class="hero-top">
+        <div class="hero-brand">
+          <div class="hero-name">${esc(c.card.feed.options.name || prof.app_name || 'Snipe Hunt')}</div>
+          <div class="hero-sub"><span class="dot pulse" style="background:${color}"></span>${prof.player ? esc(prof.player) + ' · ' : ''}${Number(a.listings || 0).toLocaleString()} listings watched · searched ${ago(a.last_search)}${a.searching ? ' · searching now' : ''}</div>
+        </div>
+        <div class="hero-stats">${stats.join('')}</div>
+      </div>
+      ${nextHtml}
+      ${timeline(c)}
+    </div>`;
+  }],
+
   buy_now: ['Buy now, think later', true, c => {
     const line = buyLine(c), all = buyNowSteals(c);
     if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * line)}% of its value or less right now. The bot checks every hour, and new ones push to your phone.`);
@@ -979,13 +1126,17 @@ const PANELS = {
     if (!w) return empty('Update the bot to see this: it needs a version with ledger worth.');
     if (!w.valued) return empty(`None of your ${w.n} cards has a recorded sale of the same card yet. This fills in as the ledger grows.`);
     const gainColor = w.gain >= 0 ? '#2e7d32' : '#c62828';
-    return `<div style="padding-top:10px"></div>` + grid(3, [
+    const paidPct = w.value ? Math.round(w.paid / w.value * 100) : 0;
+    const top = w.top.filter(x => x.by === 'sales').slice(0, 8), topMax = Math.max(1, ...top.map(x => Math.max(x.value, x.paid)));
+    return `<div style="padding-top:10px" class="ring-row">${ring(paidPct, paidPct <= 100 ? '#1e88e5' : '#c62828', paidPct + '%', 'PAID OF WORTH')}` + grid(3, [
       stat('WORTH', '$' + Math.round(w.value).toLocaleString(), '#1e88e5', '💎'),
       stat('PAID', '$' + Math.round(w.paid).toLocaleString(), '#546e7a', '💳'),
-      stat(w.gain >= 0 ? 'UP' : 'DOWN', (w.gain >= 0 ? '+$' : '-$') + Math.abs(Math.round(w.gain)).toLocaleString(), gainColor, w.gain >= 0 ? '📈' : '📉')]) +
+      stat(w.gain >= 0 ? 'UP' : 'DOWN', (w.gain >= 0 ? '+$' : '-$') + Math.abs(Math.round(w.gain)).toLocaleString(), gainColor, w.gain >= 0 ? '📈' : '📉')]) + `</div>` +
       `<div class=muted style="font-size:12px;margin-top:8px">${w.valued} of ${w.n} cards priced by the ledger's newest sale of the same card; the rest at what you paid.</div>` +
       (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + w.movers.map(m => `<div class=line style="padding:6px 0;font-size:13px"><b>${esc(m.card)}</b> <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></div>`).join('') : '') +
-      cap('TOP CARDS BY THE LEDGER') + w.top.filter(x => x.by === 'sales').slice(0, 8).map(x => `<div class=line style="padding:6px 0;font-size:13px"><b>${esc(x.card)}</b> <span class=muted>· paid ${money(x.paid)} · worth <b style="color:var(--primary-text-color)">${money(x.value)}</b> (${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at})</span></div>`).join('');
+      cap('TOP CARDS BY THE LEDGER · GREY = PAID, COLOUR = WORTH') + top.map(x => `<div class=line style="padding:7px 0;font-size:13px"><b>${esc(x.card)}</b> <span class=muted style="font-size:12px">· ${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at}</span>
+        <div class="dual"><div class="dual-bars"><span class="dual-paid" style="width:${Math.round(x.paid / topMax * 100)}%"></span><span class="dual-worth" style="width:${Math.round(x.value / topMax * 100)}%;background:${x.value >= x.paid ? '#2e7d32' : '#c62828'}"></span></div>
+        <div class="dual-txt">${money(x.paid)} ▸ <b>${money(x.value)}</b> <b style="color:${x.value >= x.paid ? '#2e7d32' : '#c62828'}">${x.value >= x.paid ? '+' : ''}${Math.round((x.value - x.paid) / (x.paid || 1) * 100)}%</b></div></div></div>`).join('');
   }],
 
   closes: ['Where steals happen', false, c => {
@@ -998,11 +1149,13 @@ const PANELS = {
       stat('ONE-OFF SELLERS', pct(k.groups.small), '#0288d1', '🧊'), stat('CONSIGNORS', pct(k.groups.consignor), '#e53935', '🔥'),
       stat('DAYTIME ENDINGS', pct(k.hours.day), '#0288d1', '🌤️'), stat('EVENING ENDINGS', pct(k.hours.evening), '#fb8c00', '🌙')]) +
       `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">How far from the bot's going rate its picked auctions closed, as a median of the ${k.calls} that sold (100% = at the going rate, shipping included). Daytime is 8am–8pm at small sellers; consignors nearly all end in the evening. A 🧊 quiet seller or daytime ending is where a cheapskate max wins; a 🔥 hot seller is where it doesn't, so lowball snipes skip them.</div>` +
+      (k.types && Object.keys(k.types).length ? cap('BY CARD TYPE AND ENDING HOUR · HOW THEY CLOSE AGAINST VALUE') + heatGrid(k.types) : '') +
       (k.hot.length ? cap('HOT SELLERS · THEIR AUCTIONS CLOSE OVER VALUE') + k.hot.map(x => row('🔥', x)).join('') : '') +
       (k.quiet.length ? cap('QUIET SELLERS · WHERE THE MAX WINS') + k.quiet.map(x => row('🧊', x)).join('') : '');
   }],
 
   calls: ['How the calls turned out', false, c => {
+    // (heatGrid lives just above PANELS)
     const m = c.d.market;
     if (!m) return empty('Update the bot to see this: it needs a version that records sold prices.');
     if (!m.count) return empty('No sold prices yet. The bot records the final bid of every auction it has watched, starting with the next ones to close.');
@@ -1011,7 +1164,9 @@ const PANELS = {
       stat('SOLD PRICES', m.count, '#1e88e5', '🔨'),
       stat('UNDER THE MAX', m.calls ? m.under_max + ' / ' + m.calls : '–', '#43a047', '🎯'),
       stat('PRICE GAP', m.value_gap_pct == null ? '–' : m.value_gap_pct + '%', '#8e24aa', '📏'),
-    ]) + (m.calls ? `<div class="bar" style="margin-top:12px"><div style="width:${w}%;background:#43a047"></div><div style="flex:1;background:#78909c"></div></div>` : '') +
+    ]) + (m.calls ? stack([['Closed at or under the max', m.under_max, '#43a047'], ['Went higher', m.over_max, '#78909c']], m.calls) : '') +
+    ((m.bands || []).some(b => b.calls) ? cap('BY VALUE BAND · HOW FAR THE REAL PRICE RAN FROM THE BOT\'S RATE') + m.bands.filter(b => b.calls).map(b =>
+      hbar(esc(b.band), Math.abs(b.value_bias_pct), 50, b.value_bias_pct > 10 ? '#e53935' : b.value_bias_pct < -10 ? '#1e88e5' : '#43a047', `${b.calls} sold · ${Math.abs(b.value_bias_pct)}% ${b.value_bias_pct > 0 ? 'above' : 'below'}`)).join('') : '') +
     `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">
       ${m.count} real auction results on record, ${m.count_7d} from the last 7 days. New picks are priced from these.<br>
       ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.${m.under_win == null ? '' : ` A snipe at the "to win" bid would have been in the running on ${m.under_win} of the ${m.calls}.`}` : 'None of the picked auctions has sold yet.'}
@@ -1112,12 +1267,15 @@ const PANELS = {
     const a = c.d.record;
     const total = (a.wins || 0) + (a.losses || 0);
     const w = total ? Math.round(a.wins / total * 100) : 0;
-    return `<div style="padding-top:10px">` + grid(3, [
-      stat('WIN RATE · ' + a.days + 'D', a.rate == null ? '–' : a.rate + '%', '#43a047', '🎯'),
+    const weekTotal = (a.wins_week || 0) + (a.losses_week || 0), gixTotal = (a.gixen_wins || 0) + (a.gixen_losses || 0);
+    return `<div style="padding-top:10px" class="ring-row">${ring(a.rate == null ? w : a.rate, '#43a047', (a.rate == null ? w : a.rate) + '%', 'WIN RATE · ' + a.days + 'D')}` + grid(2, [
       stat('WON / LOST', a.wins + ' / ' + a.losses, '#8e24aa', '🏆'),
       stat('THIS WEEK', a.wins_week + ' / ' + a.losses_week, '#fb8c00', '📅'),
-    ]) + `<div class="bar" style="margin-top:12px"><div style="width:${w}%;background:#43a047"></div><div style="flex:1;background:#78909c"></div></div>
-    <div class="muted" style="font-size:12px;margin-top:6px">Gixen snipes: ${a.gixen_wins} won, ${a.gixen_losses} lost. The other ${a.wins - a.gixen_wins} wins were straight eBay buys, bids and offers.</div>` +
+    ]) + `</div><div style="margin-top:10px">` +
+      hbar('All wins', a.wins, total, '#43a047', `${a.wins} of ${total}`) +
+      hbar('This week', a.wins_week, weekTotal, '#fb8c00', `${a.wins_week} of ${weekTotal}`) +
+      hbar('Gixen snipes', a.gixen_wins, gixTotal, '#8e24aa', `${a.gixen_wins} of ${gixTotal}`) +
+    `</div><div class="muted" style="font-size:12px;margin-top:6px">The other ${a.wins - a.gixen_wins} wins were straight eBay buys, bids and offers.</div>` +
     cap('LATEST ONES THAT GOT AWAY') +
     ((a.recent_losses || []).length ? a.recent_losses.map(e => `<div class="line" style="padding:5px 0;font-size:13px">${esc(e.title)}<br><span class="muted" style="font-size:11px">${esc(e.date)}${e.seller ? ' · ' + esc(e.seller) : ''}</span></div>`).join('') : empty('No losses on record.')) + `</div>`;
   }],
@@ -1144,7 +1302,8 @@ const PANELS = {
       stat('GRADED', a.graded, '#546e7a', '🏅'),
       stat('FRONT PAGE', a.front_page, '#f9a825', '📖'),
       stat('DUPES', a.dupes, '#6d4c41', '♻️'),
-    ]) + cap('THIS MONTH · ' + a.month_cards + ' CARDS') + `
+    ]) + (a.by_status ? cap('WHERE THEY ARE') + stack([['In binder', a.by_status['In binder'] || 0, c.accent], ['Delivered, to file', a.by_status.Delivered || 0, '#8e24aa'], ['In transit', a.by_status['In transit'] || 0, '#1e88e5'], ['Won, not shipped', a.by_status.Won || 0, '#fb8c00']], a.cards) : '') +
+    cap('THIS MONTH · ' + a.month_cards + ' CARDS') + `
     <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-size:22px;font-weight:800">${money(spent)}</div>
       <div class="muted" style="font-size:13px">${budget > 0 ? 'of $' + Math.round(budget) + ' budget · ' + (spent > budget ? money(spent - budget) + ' over' : money(budget - spent) + ' left') : 'no monthly budget set'}</div></div>
     ${budget > 0 ? `<div class="bar" style="margin-top:4px"><div style="width:${pct}%;background:${barColor}"></div></div>` : ''}` +
@@ -1209,7 +1368,7 @@ const PANELS = {
       <div style="flex:1;min-width:0">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
           <span style="min-width:0">${pill(kind, color)} ${o.url ? `<a class="title" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)}</a>` : `<b>${esc(o.title)}</b>`}</span>
-          ${o.at ? `<span style="flex:none">${pill('⏱ ' + left(o.at), msLeft(o.at) < 2 * HOUR ? '#e53935' : (msLeft(o.at) < 12 * HOUR ? '#fb8c00' : '#546e7a'))}</span>` : ''}
+          ${o.at ? `<span style="flex:none">${liveClock(o.at, 'pill')}</span>` : ''}
         </div>
         <div class="muted" style="font-size:12px;margin-top:3px;line-height:1.35">${o.line}</div>
         <div class="row tight">${o.buttons}</div>
@@ -1262,7 +1421,8 @@ const PANELS = {
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
     const chip = gixenChip(c);
-    return `<div style="padding-top:6px"></div>` + jackpotBanner(c) + bidNowList(c) + droppedList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
+    return `<div style="padding-top:10px"><input data-search type="search" placeholder="Filter ${c.picks.length} picks: set, parallel, seller, year, item #…" value="${esc(c.card.query)}"></div>` +
+      jackpotBanner(c) + bidNowList(c) + droppedList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
       (chip ? `<div class="row" style="margin-top:2px">${chip}</div>` : '') + PANELS[chosen[2]][2](c);
   }],
 
@@ -1323,20 +1483,24 @@ const STYLE = `
   .line { border-top: 1px solid var(--divider-color); }
   .line > b { flex: none; }
   .title { font-weight: 600; line-height: 1.25; text-decoration: none; color: var(--primary-text-color); }
-  .cap { margin-top: 14px; font-size: 12px; letter-spacing: 1px; color: var(--secondary-text-color); }
+  .cap { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--secondary-text-color); }
+  .cap::after { content: ''; flex: 1; height: 1px; background: var(--divider-color); }
   .pill { color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 12px; font-weight: 700; white-space: nowrap; }
   .flag { color: #fff; border-radius: 6px; padding: 0 5px; font-size: 10px; font-weight: 700; margin-right: 3px; }
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
   .grid { display: grid; gap: 8px; }
-  .stat { border-radius: 12px; padding: 10px 6px; border: 1px solid; text-align: center; min-width: 0; }
+  .stat { border-radius: 14px; padding: 11px 6px; border: 1px solid; text-align: center; min-width: 0;
+          background-image: linear-gradient(160deg, #ffffff12, transparent 60%); box-shadow: inset 0 1px 0 #ffffff14; }
   .stat-icon { font-size: 18px; }
-  .stat-value { font-size: 22px; font-weight: 800; line-height: 1.15; }
+  .stat-value { font-size: 23px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
   .stat-label { font-size: 10px; letter-spacing: 1px; color: var(--secondary-text-color); }
   .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .row.tight { margin-top: 7px; }
   .btn { display: inline-block; cursor: pointer; user-select: none; -webkit-user-select: none; border-radius: 14px; padding: 5px 11px;
-         font-size: 12px; font-weight: 600; line-height: 1.2; text-decoration: none;
+         font-size: 12px; font-weight: 600; line-height: 1.2; text-decoration: none; transition: filter .12s, transform .12s;
          background: var(--divider-color); color: var(--primary-text-color); }
+  .btn:hover { filter: brightness(1.15); }
+  .btn:active { transform: scale(.96); }
   .btn.on { background: var(--primary-color); color: var(--text-primary-color, #fff); }
   .btn.busy { opacity: .45; pointer-events: none; }
   .jackpot { display: flex; gap: 14px; align-items: center; margin: 0 0 12px; padding: 14px; border-radius: 16px;
@@ -1361,9 +1525,15 @@ const STYLE = `
   .strip-head .row { margin-top: 4px; }
   .strip-cap { font-size: 12px; margin-top: 8px; }
   .tile { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; min-width: 0;
-          background: var(--secondary-background-color, #8881); border: 1px solid var(--divider-color, #8884);
-          transition: transform .15s ease, box-shadow .15s ease; }
-  .tile:hover { transform: translateY(-2px); box-shadow: 0 6px 18px #0005; }
+          background: var(--secondary-background-color, #8881); border: 1px solid var(--divider-color, #8884); border-top: 3px solid #546e7a;
+          transition: transform .15s ease, box-shadow .15s ease; animation: rise .35s ease both; }
+  .tile:hover { transform: translateY(-3px); box-shadow: 0 10px 24px #0006; }
+  .strip .tile:nth-child(2) { animation-delay: .04s; } .strip .tile:nth-child(3) { animation-delay: .08s; } .strip .tile:nth-child(4) { animation-delay: .12s; }
+  .strip .tile:nth-child(5) { animation-delay: .16s; } .strip .tile:nth-child(6) { animation-delay: .2s; } .strip .tile:nth-child(n+7) { animation-delay: .24s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .tile-img::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 35%; background: linear-gradient(transparent, #0005); pointer-events: none; }
+  .newtag { position: absolute; top: 8px; right: 8px; background: #7c4dff; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 1px;
+            padding: 3px 7px; border-radius: 8px; box-shadow: 0 1px 4px #0006; z-index: 1; }
   .tile.hot { border-color: #e53935; box-shadow: 0 0 0 1px #e5393588; }
   .tile.jp { border-color: #d50000; animation: jackpot-pulse 1.6s ease-out infinite; }
   .tile-img { position: relative; display: block; height: 0; padding-top: 80%; background: #0003; overflow: hidden; }
@@ -1371,7 +1541,7 @@ const STYLE = `
   .tile-img img { object-fit: contain; display: block; }
   .tile-img .noimg { display: flex; align-items: center; justify-content: center; font-size: 40px; }
   .clock, .off, .jptag { position: absolute; color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 10px;
-          box-shadow: 0 1px 4px #0006; }
+          box-shadow: 0 1px 4px #0006; z-index: 1; font-variant-numeric: tabular-nums; }
   .clock { top: 8px; left: 8px; }
   .off { bottom: 8px; right: 8px; background: #00a152; font-size: 14px; }
   .jptag { bottom: 8px; left: 8px; background: #d50000; }
@@ -1387,7 +1557,77 @@ const STYLE = `
              overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
     .tile { scroll-snap-align: start; }
   }
-  @media (prefers-reduced-motion: reduce) { .tile, .tile:hover { transition: none; transform: none; } .tile.jp { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .tile, .tile:hover { transition: none; transform: none; animation: none; } .tile.jp { animation: none; } .hero { animation: none; } .pulse { animation: none; } }
+  .pill[data-end] { font-variant-numeric: tabular-nums; }
+  /* command center */
+  .hero { position: relative; margin: 10px 0 2px; padding: 16px 18px 14px; border-radius: 18px; color: #fff; overflow: hidden; animation: rise .4s ease both;
+          background: radial-gradient(120% 150% at 0% 0%, var(--accent, #c41e3a) 0%, #1c2140 52%, #0e1120 100%); box-shadow: 0 12px 30px #0005; }
+  .hero::after { content: ''; position: absolute; inset: 0; background: radial-gradient(55% 80% at 100% 0%, #ffffff1f, transparent 60%); pointer-events: none; }
+  .hero > * { position: relative; }
+  .hero a { color: #fff; }
+  .hero .muted { color: #ffffffb3; }
+  .hero .btn { background: #ffffff24; color: #fff; }
+  .hero .btn:hover { background: #ffffff38; filter: none; }
+  .hero-top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-start; justify-content: space-between; }
+  .hero-name { font-size: 26px; font-weight: 900; letter-spacing: -.3px; line-height: 1.1; text-shadow: 0 2px 10px #0006; }
+  .hero-sub { font-size: 12px; margin-top: 5px; color: #ffffffc4; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hs { min-width: 84px; padding: 8px 10px; border-radius: 12px; background: #ffffff14; border: 1px solid #ffffff22; text-align: center; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .hs b { display: block; font-size: 21px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .hs small { display: block; font-size: 9.5px; letter-spacing: 1px; color: #ffffffb3; margin-top: 3px; white-space: nowrap; }
+  .hs .hs-sub { letter-spacing: 0; color: #ffffffd9; }
+  .hero-next { display: flex; gap: 14px; align-items: center; margin-top: 14px; padding: 12px 14px; border-radius: 14px; background: #00000038; border: 1px solid #ffffff1c; }
+  .hero-next img { width: 84px; height: 112px; object-fit: cover; border-radius: 8px; box-shadow: 0 4px 14px #0008; display: block; flex: none; }
+  .hero-kicker { font-size: 10px; letter-spacing: 2px; color: #ffffffb3; font-weight: 700; }
+  .hero-title { display: block; font-size: 17px; font-weight: 700; line-height: 1.2; margin: 3px 0 5px; text-decoration: none; }
+  .hero-clock { flex: none; text-align: right; line-height: 1; text-shadow: 0 2px 12px #0008; }
+  .hero-clock span { font-size: 38px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .hero-clock small { display: block; font-size: 10px; letter-spacing: 2px; color: #ffffffb3; font-weight: 700; margin-top: 5px; }
+  .pulse { animation: pulse 1.8s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .tl { margin-top: 14px; }
+  .tl-cap { font-size: 10px; letter-spacing: 2px; color: #ffffffb3; font-weight: 700; margin-bottom: 6px; }
+  .tl-track { position: relative; height: 40px; border-radius: 8px; background: #ffffff12; }
+  .tl-quiet { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, #ffffff14 0 5px, transparent 5px 11px); }
+  .tl-dot { position: absolute; width: 13px; height: 13px; border-radius: 50%; margin-left: -7px; border: 2px solid #0009; box-shadow: 0 0 0 1px #fff4; transition: transform .15s; }
+  .tl-dot:hover { transform: scale(1.6); z-index: 2; }
+  .tl-dot.got { box-shadow: 0 0 0 2px #fff, 0 0 8px #fff9; }
+  .tl-ticks { position: relative; height: 16px; margin-top: 4px; font-size: 10px; color: #ffffff99; }
+  .tl-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .tl-ticks span:first-child { transform: none; }
+  .tl-ticks span:last-child { transform: translateX(-100%); }
+  @media (max-width: 600px) {
+    .hero { padding: 14px 14px 12px; }
+    .hero-name { font-size: 22px; }
+    .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+    .hs { min-width: 0; padding: 7px 4px; }
+    .hs small { white-space: normal; }
+    .hero-next { flex-wrap: wrap; }
+    .hero-next img { width: 64px; height: 86px; }
+    .hero-clock { width: 100%; text-align: left; }
+    .hero-clock span { font-size: 30px; }
+  }
+  /* small charts */
+  .ring { display: flex; flex-direction: column; align-items: center; flex: none; }
+  .ring svg { display: block; }
+  .ring-sub { font-size: 9.5px; letter-spacing: 1px; color: var(--secondary-text-color); margin-top: 2px; text-align: center; }
+  .ring-row { display: flex; gap: 14px; align-items: center; }
+  .ring-row .grid { flex: 1; }
+  .hbar { display: grid; grid-template-columns: minmax(80px, 2fr) 3fr minmax(60px, auto); gap: 8px; align-items: center; font-size: 12px; padding: 4px 0; }
+  .hbar-track { height: 8px; border-radius: 4px; background: #8883; overflow: hidden; }
+  .hbar-track span { display: block; height: 100%; border-radius: 4px; }
+  .hbar-val { text-align: right; white-space: nowrap; color: var(--secondary-text-color); font-variant-numeric: tabular-nums; }
+  .stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 10px; gap: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; margin-top: 6px; }
+  .heat { display: grid; gap: 4px; margin-top: 8px; font-size: 12px; }
+  .heat div { padding: 7px 4px; border-radius: 8px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .heat .hl { text-align: left; font-weight: 600; color: var(--secondary-text-color); background: none; padding-left: 0; }
+  .dual { display: flex; gap: 10px; align-items: center; margin-top: 5px; }
+  .dual-bars { position: relative; flex: 1; height: 14px; border-radius: 5px; background: #8882; overflow: hidden; }
+  .dual-bars span { position: absolute; left: 0; top: 0; height: 50%; }
+  .dual-paid { background: #78909c99; }
+  .dual-worth { top: 50% !important; }
+  .dual-txt { flex: none; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .warn { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #fb8c0022; border: 1px solid #fb8c0077; font-size: 12px; line-height: 1.7; }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
@@ -1447,12 +1687,28 @@ class SnipeHuntCard extends HTMLElement {
     if (this._hass) this.feed.start(this._hass);
     clearInterval(this.timer);
     this.timer = setInterval(() => { if (this.config && PANELS[this.config.panel][1]) this.draw(); }, 30000);
+    clearInterval(this.ticker);
+    this.ticker = setInterval(() => this.tick(), 1000);
     this.draw();
   }
 
   disconnectedCallback() {
     this.feed.cards.delete(this);
     clearInterval(this.timer);
+    clearInterval(this.ticker);
+  }
+
+  // Every countdown on the card moves once a second; when one reaches zero the
+  // panel is drawn again so the ended auction steps aside.
+  tick() {
+    let ended = false;
+    this.body.querySelectorAll('[data-end]').forEach(el => {
+      const ms = msLeft(el.dataset.end);
+      if (ms <= 0 && el.dataset.ended == null) { el.dataset.ended = '1'; ended = true; }
+      if (el.dataset.big != null) { el.textContent = bigClock(ms); el.parentElement.style.color = clockColor(ms); }
+      else { el.textContent = '⏱ ' + clockTxt(ms); el.style.background = clockColor(ms); }
+    });
+    if (ended) this.draw();
   }
 
   getCardSize() { return 4; }
@@ -1615,6 +1871,7 @@ class SnipeHuntStrategy {
     const budget = id('number', 'monthly_budget');
     const VIEWS = {
       tonight: {title: 'Tonight', path: 'tonight', icon: 'mdi:weather-night', sections: [
+        {...section(panel('hero')), column_span: 3},
         {...section(heading('Buy now, think later', 'mdi:lightning-bolt'), panel('buy_now')), column_span: 3},
         {...section(heading('Ending soonest', 'mdi:timer-sand'), panel('ending')), column_span: 3},
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
