@@ -783,6 +783,86 @@ const PANELS = {
       (s.best ? `<div class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0;margin-top:6px">${s.best.image ? `<img src="${esc(s.best.image)}" style="height:74px;border-radius:6px">` : ''}<div><div class="muted" style="font-size:11px;letter-spacing:2px">🏆 BEST STEAL</div><b>${esc(s.best.card)}</b><div style="font-size:13px">${money(s.best.paid)} for a ${worth(s.best.value)} card · ${s.best.pct}% of value${s.best.date ? ' · ' + esc(s.best.date) : ''}</div></div></div>` : '') + `</div>`;
   }],
 
+  gaps: ['Gaps in the collection', false, c => {
+    // Every card of the player that has sold on eBay is the market's checklist;
+    // what you own is matched against it card by card. The rest are the gaps:
+    // the cheap ones that sell all the time, the big ones, and any on sale now.
+    const g = c.d.gaps;
+    if (!g) return empty('Update the bot to see this: it needs a version with the gap analysis.');
+    if (!g.known) return empty('No sales on record yet. The gaps show up as the ledger learns what has sold.');
+    const view = store('gaps_view', g.buyable && g.buyable.length ? 'buy' : 'easy');
+    const years = (g.years || []).filter(y => /^\d{4}$/.test(y.name));
+    const yMax = Math.max(1, ...years.map(y => y.known));
+    const yearRows = years.map(y => `<div class="line" style="padding:5px 0;font-size:13px"><div style="display:flex;justify-content:space-between"><b>${esc(y.name)}</b><span class="muted" style="font-size:12px">${y.owned} of ${y.known} · ${y.pct}%${y.easy_cost ? ' · easy fills ' + money(y.easy_cost) : ''}</span></div>
+      <div class="dual-bars" style="margin-top:3px"><span class="dual-paid" style="width:${Math.round(y.known / yMax * 100)}%"></span><span class="dual-worth" style="width:${Math.round(y.owned / yMax * 100)}%;background:${c.accent}"></span></div></div>`).join('');
+    const famRows = (g.families || []).slice(0, 8).map(f => `<div class="line" style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:13px"><span style="min-width:0"><b>${esc(f.name)}</b> <span class="muted" style="font-size:12px">· ${f.owned} of ${f.known} · usually ${money(f.typical)}</span></span><b style="color:#c62828;flex:none">${f.gap} missing</b></div>`).join('');
+    const liveTxt = e => !e.live ? '' : e.live.auction
+      ? ` · <b style="color:#fb8c00">bid at ${money(e.live.total)}</b>${e.live.ends ? ' ' + liveClock(e.live.ends, 'pill') : ''}`
+      : ` · <b style="color:#2e7d32">on sale ${money(e.live.total)}</b>`;
+    const row = e => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:7px 0">
+      ${e.image ? `<img src="${esc(e.image)}" loading="lazy" style="height:52px;width:38px;object-fit:cover;border-radius:5px">` : ''}
+      <div style="flex:1;min-width:0"><a class="title" href="${esc(e.live ? e.live.url : e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>
+        <div class="muted" style="font-size:12px">${e.n} sale${e.n === 1 ? '' : 's'} · usually <b style="color:var(--primary-text-color)">${money(e.median)}</b> · ${esc(e.family)} · last ${esc(e.last)}${liveTxt(e)}</div></div>
+      ${e.live ? linkBtn(e.live.auction ? 'Bid ↗' : 'Buy ↗', e.live.url, e.live.auction ? '#fb8c00' : '#2e7d32') : linkBtn('Search ↗', `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(e.title)}&LH_Complete=0`, '')}</div>`;
+    const lists = {easy: g.easy || [], big: g.big || [], buy: g.buyable || []};
+    const blurb = {easy: `The gaps that sell most often for ${money(6)} or less, delivered: the fastest way to fill a year.`,
+      big: 'The missing centrepieces, by what they usually go for.',
+      buy: 'Gaps on sale at a fixed price right now, the best price against the usual first.'}[view];
+    return `<div style="padding-top:10px"></div>` + grid(4, [
+      stat('FILLED', g.pct + '%', c.accent, '🧩'),
+      stat('KNOWN CARDS', g.known, '#546e7a', '🗂️'),
+      stat('YOU OWN', g.owned, '#1e88e5', '🃏'),
+      stat('EASY FILLS', `${g.easy_n} · ${money(g.easy_cost)}`, '#2e7d32', '🛒'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">Every card of this player that has sold on eBay, lots and slabs left out, against the cards you own. ${g.easy_n} missing cards usually go for ${money(6)} or less and would cost about ${money(g.easy_cost)} together${g.live_n ? `; <b style="color:var(--primary-text-color)">${g.live_n}</b> gaps are on sale right now` : ''}.</div>` +
+      cap('BY YEAR · GREY = CARDS THAT HAVE SOLD, COLOUR = YOURS') + yearRows +
+      cap('BIGGEST GAPS BY SET') + famRows +
+      `<div style="margin-top:10px"></div>` + chips('gaps_view', 'easy', [['buy', '🛒 On sale now' + (lists.buy.length ? ' ' + lists.buy.length : '')], ['easy', '🧩 Easy fills'], ['big', '🐋 Big fish']], view) +
+      `<div class="muted" style="font-size:12px;margin:6px 0 2px">${blurb}</div>` +
+      (lists[view].length ? lists[view].map(row).join('') : empty(view === 'buy' ? 'No gap is on sale at a fixed price right now.' : 'Nothing here yet.'));
+  }],
+
+  whales: ['Big money', false, c => {
+    // What people pay the most for, from the sales ledger: the price ladder by
+    // what a card is, the biggest sales ever, the overpays, and your own cards
+    // in the money tiers.
+    const w = c.d.whales;
+    if (!w) return empty('Update the bot to see this: it needs a version with the big-money analysis.');
+    if (!w.n) return empty('No sales on record yet.');
+    const view = store('whale_view', 'top');
+    const ladderMax = Math.max(1, ...(w.ladder || []).map(l => l.median));
+    const TIER_COLOR = {'1 of 1': '#6a1b9a', 'Autograph': '#c62828', 'Slab PSA 10': '#ef6c00', 'Slab, other': '#f9a825', 'Relic': '#00897b', 'Numbered': '#1e88e5', 'Plain': '#546e7a'};
+    const ladder = (w.ladder || []).map(l => `<div class="line" style="padding:5px 0;font-size:13px"><div style="display:flex;justify-content:space-between;gap:8px"><span><b>${esc(l.tier)}</b> <span class="muted" style="font-size:12px">· ${l.n} sale${l.n === 1 ? '' : 's'} · top ${money(l.max)}</span></span><span style="flex:none"><b>${money(l.median)}</b>${l.x != null && l.x !== 1 ? ` <span class="muted" style="font-size:12px">${l.x}× plain</span>` : ''}</span></div>
+      <div class="bar" style="margin-top:3px"><div style="width:${Math.max(2, Math.round(l.median / ladderMax * 100))}%;background:${TIER_COLOR[l.tier] || c.accent}"></div></div></div>`).join('');
+    const drivers = (w.drivers || []).map(d => `<span class="btn on" title="${d.n} sales, top ${money(d.max)}">${esc(d.family)} · ${money(d.median)}</span>`).join(' ');
+    const saleRow = (s, i) => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:7px 0">
+      <div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>
+      ${s.image ? `<img src="${esc(s.image)}" loading="lazy" style="height:52px;width:38px;object-fit:cover;border-radius:5px">` : ''}
+      <div style="flex:1;min-width:0"><a class="title" href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>
+        <div class="muted" style="font-size:12px">${pill(s.tier, TIER_COLOR[s.tier] || '#546e7a')} ${esc(s.family)} · ${esc(s.date)} · ${s.kind === 'bin' ? 'Buy It Now' : (s.bids != null ? s.bids + ' bid' + (s.bids === 1 ? '' : 's') : 'auction')}${s.usual != null ? ` · usually <b style="color:var(--primary-text-color)">${money(s.usual)}</b> · <b style="color:#c62828">${s.x}×</b>` : ''}</div></div>
+      <div style="font-size:17px;font-weight:700;flex:none">${money(s.total)}</div></div>`;
+    const y = w.yours || {};
+    const yours = `<div style="padding-top:6px"></div>` + grid(3, [
+      stat('MONEY CARDS', y.n || 0, '#6a1b9a', '💎'),
+      stat('PAID', money(y.paid), '#546e7a', '💳'),
+      stat('WORTH', y.valued ? money(y.value) : '–', '#1e88e5', '🏷️'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">Your cards above plain: ${Object.entries(y.by_tier || {}).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(', ') || 'none yet'}. ${y.valued ? `${y.valued} of them priced by a real sale of the same card.` : ''}${y.dupes_value ? ` Dupes among them would fetch about ${money(y.dupes_value)}.` : ''}</div>` +
+      (y.top || []).map(x => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${x.image ? `<img src="${esc(x.image)}" loading="lazy" style="height:44px;width:32px;object-fit:cover;border-radius:4px">` : ''}<span style="flex:1;min-width:0"><b>${esc(x.card)}</b><br><span class="muted" style="font-size:12px">${pill(x.tier, TIER_COLOR[x.tier] || '#546e7a')} paid ${money(x.paid)}</span></span><b style="flex:none">${x.value != null ? money(x.value) : '–'}</b></div>`).join('');
+    const trend = w.trend ? `<div class="muted" style="font-size:12px;margin-top:8px">Autographs and PSA 10s lately: a typical ${money(w.trend.now)} against ${money(w.trend.was)} before, ${w.trend.pct === 0 ? 'flat' : (w.trend.pct > 0 ? '+' : '') + w.trend.pct + '%'} over ${w.trend.n} sales.</div>` : '';
+    const body = view === 'over'
+      ? `<div class="muted" style="font-size:12px;margin:6px 0 2px">Sales at three times or more what the same card usually goes for: ${w.overpaid_n} of them, ${money(w.overpaid_dollars)} over the usual in all. Someone else's stupid money is your reason to list a dupe.</div>` + ((w.overpaid || []).length ? w.overpaid.map(saleRow).join('') : empty('No overpay on record yet; this needs a card sold three times or more.'))
+      : view === 'yours' ? yours
+      : `<div class="muted" style="font-size:12px;margin:6px 0 2px">The biggest sales on record, shipping included.</div>` + (w.top || []).map(saleRow).join('');
+    return `<div style="padding-top:10px"></div>` + grid(4, [
+      stat('SALES ON RECORD', w.n.toLocaleString(), '#546e7a', '🧾'),
+      stat('DOLLARS', '$' + Math.round(w.dollars).toLocaleString(), '#1e88e5', '💵'),
+      stat('TOP 5% TAKE', (w.concentration || {}).share + '%', '#c62828', '🐋'),
+      stat('TYPICAL SALE', money(w.median), '#2e7d32', '🏷️'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">The ${(w.concentration || {}).top_n} biggest sales are ${(w.concentration || {}).share}% of every dollar spent on this player. What each step up is worth, as a typical price:</div>` +
+      cap('THE PRICE LADDER') + ladder +
+      (drivers ? cap('WHERE THE MONEY IS · TYPICAL SALE BY SET') + `<div class="row" style="margin:4px 0">${drivers}</div>` : '') + trend +
+      `<div style="margin-top:10px"></div>` + chips('whale_view', 'top', [['top', '🐋 Biggest sales'], ['over', '🤑 Stupid money' + (w.overpaid_n ? ' ' + w.overpaid_n : '')], ['yours', '💎 Your money cards']], view) + body;
+  }],
+
   hall: ['Hall of Fame', false, c => {
     // The ten best steals of all time, from the whole collection: each card you
     // own against what the same card last sold for (the bot's ledger), or the
@@ -1350,15 +1430,19 @@ const PANELS = {
     if (sort === 'new') cards.sort((x, y) => (y.d || '') < (x.d || '') ? -1 : ((y.d || '') > (x.d || '') ? 1 : Number(y.id) - Number(x.id)));
     if (sort === 'price') cards.sort((x, y) => y.p - x.p);
     if (sort === 'year') cards.sort((x, y) => x.n < y.n ? -1 : 1);
+    if (sort === 'value') cards.sort((x, y) => (y.v || 0) - (x.v || 0));
+    if (sort === 'steal') cards.sort((x, y) => ((x.v ? x.p / x.v : 9) - (y.v ? y.p / y.v : 9)));
+    const worthTxt = x => x.v == null ? '' : ` ▸ <b style="color:${x.v >= x.p ? '#2e7d32' : '#c62828'}">${money(x.v)}</b>`;
+    const valued = cards.filter(x => x.v != null);
     const FLAG = {R: ['RC', '#fb8c00'], A: ['AUTO', '#00897b'], L: ['RELIC', '#00897b'], N: ['#’d', '#8e24aa'], G: ['GRADED', '#546e7a'], F: ['FRONT', '#f9a825'], D: ['DUPE', '#6d4c41']};
     const flags = x => [...x.f].map(f => `<span class="flag" style="background:${FLAG[f][1]}">${FLAG[f][0]}</span>`).join('');
     return `<div style="padding-top:10px">
     <input data-search type="search" placeholder="Search ${total} cards: set, year, parallel, seller…" value="${esc(c.card.query)}">` +
     chips('status', 'all', [['all', 'All'], ['In binder', 'In binder'], ['Delivered', 'To file'], ['In transit', 'In transit'], ['flag', 'Hits'], ['dupe', 'Dupes']]) +
-    chips('cardsort', 'new', [['new', 'Newest'], ['price', 'Priciest'], ['year', 'By year']]) +
-    `<div class="muted" style="font-size:12px;margin:10px 0 2px"><span data-found>${cards.length}</span> cards · ${money(cards.reduce((t, x) => t + x.p, 0))} paid</div>` +
+    chips('cardsort', 'new', [['new', 'Newest'], ['price', 'Priciest'], ['value', 'Worth most'], ['steal', 'Best buys'], ['year', 'By year']]) +
+    `<div class="muted" style="font-size:12px;margin:10px 0 2px"><span data-found>${cards.length}</span> cards · ${money(cards.reduce((t, x) => t + x.p, 0))} paid${valued.length ? ` · ${valued.length} priced by the ledger at <b style="color:var(--primary-text-color)">${money(valued.reduce((t, x) => t + x.v, 0))}</b> (paid ${money(valued.reduce((t, x) => t + x.p, 0))})` : ''}</div>` +
     cards.map(x => `<div class="line" data-find="${esc((x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase())}" style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px">
-      <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}</span></span><b>${x.p ? money(x.p) : ''}</b></div>`).join('') + `</div>`;
+      <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}${x.vn ? ' · ' + x.vn + ' sale' + (x.vn === 1 ? '' : 's') : ''}</span></span><span style="flex:none;text-align:right"><b>${x.p ? money(x.p) : ''}</b>${worthTxt(x)}</span></div>`).join('') + `</div>`;
   }],
 
   todo: ['To do', true, c => {
@@ -1887,11 +1971,13 @@ class SnipeHuntStrategy {
           graph(240, ['month_spend'], 'Spend this month')),
         section(heading('Incoming', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('incoming')),
         section(heading("What's missing", 'mdi:star-box-multiple'), panel('missing')),
+        {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
         section(heading('Every card', 'mdi:magnify'), panel('binder'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
         section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('Market trends', 'mdi:trending-up'), panel('trends')),
+        section(heading('Big money', 'mdi:cash-multiple'), panel('whales')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Hall of Fame', 'mdi:trophy-variant'), panel('hall'), heading('Brag board', 'mdi:trophy-award'), panel('brag')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
