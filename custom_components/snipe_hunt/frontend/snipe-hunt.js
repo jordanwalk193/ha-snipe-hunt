@@ -245,11 +245,18 @@ const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;bor
 // The second number next to the max: a bid at about the going rate, for a card
 // you would rather win than steal. Only the bot's newer versions send it.
 const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
+// What makes the card worth knowing (the bot's "story": set, parallel, print run, a
+// rookie year, an oddball release), one line a collector would tell a friend.
+const story = p => p.story ? `<div class="story">💡 ${esc(p.story)}</div>` : '';
 const lastSold = p => {
   // The trust strip: the newest real sales of the same card, each one tappable, so a
   // deal can be bought without opening anything else.
   const ls = p.last_sold;
-  if (!ls) return p.value != null && p.max_basis !== 'sales' ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 No sales of this card on record: the value is an estimate.</div>` : '';
+  if (!ls) {
+    if (p.value == null) return '';
+    if (p.value_source === 'web') return `<div class="muted" style="font-size:12px;margin-top:2px">🔨 Value from sales the bot found online, none of this card on its own record.</div>`;
+    return p.max_basis !== 'sales' ? `<div class="muted" style="font-size:12px;margin-top:2px">🔨 No sales of this card on record: the value is an estimate.</div>` : '';
+  }
   const day = at => new Date(at + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'});
   const comps = (ls.recent || [{total: ls.total, at: ls.at}]).map(r => r.url
     ? `<a class="comp" href="${esc(r.url)}" target="_blank" rel="noopener">${money(r.total)} · ${day(r.at)}${r.kind === 'bin' ? ' BIN' : ''}</a>`
@@ -402,7 +409,7 @@ const pickLine = (p, lead, extra) => {
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
-      ${lastSold(p)}${slabTxt(p)}
+      ${story(p)}${lastSold(p)}${slabTxt(p)}
       <div class="muted" style="font-size:11px;margin-top:2px">${sellerTxt(p)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
     </div></div>`;
@@ -745,6 +752,7 @@ const PANELS = {
         ${lastSold(p)}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
         <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
+        ${story(p)}
         <div class="muted" style="font-size:12px;margin-top:4px">${sellerTxt(p)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
       </div></div>`;
@@ -1562,6 +1570,9 @@ const STYLE = `
   ha-card { padding: 4px 14px 12px; font-size: 14px; overflow: hidden; }
   a { color: var(--primary-color); }
   .muted { color: var(--secondary-text-color); }
+  .story { font-size: 12px; line-height: 1.35; margin-top: 4px; padding: 5px 8px; border-radius: 8px;
+           background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+           border-left: 3px solid var(--primary-color); }
   .deal { color: var(--secondary-text-color); white-space: nowrap; }
   .rank { flex: none; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; text-align: center; font-size: 12px;
           font-weight: 800; margin: 2px -4px 0 0; background: var(--divider-color); }
