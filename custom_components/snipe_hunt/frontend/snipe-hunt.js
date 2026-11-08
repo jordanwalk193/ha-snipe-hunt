@@ -125,7 +125,7 @@ const saved = p => p.value == null ? 0 : Number(p.value) - (Number(p.is_auction 
 const TIER_RANK = {fire: 0, green: 1, yellow: 2};
 // Sweep focus (the bot's sweep.toml): why a pick is worth a look, what it costs
 // delivered, and its sweep score. Highest score first, then the cheapest delivered.
-const LABEL = {PRIORITY: ['🎯 Case hit', '#6a1b9a'], ODDBALL: ['🦄 Oddball', '#00897b'], TYPO: ['✏️ Typo', '#5e35b1'], 'NEW-CARD': ['🆕 New card', '#2e7d32'],
+const LABEL = {PRIORITY: ['🎯 Case hit', '#6a1b9a'], VAGUE: ['🕵️ Vague title', '#455a64'], ODDBALL: ['🦄 Oddball', '#00897b'], TYPO: ['✏️ Typo', '#5e35b1'], 'NEW-CARD': ['🆕 New card', '#2e7d32'],
   AUTO: ['✍️ Auto', '#c62828'], 'LOW-NUMBERED': ['#️⃣ Low #', '#ef6c00']};
 const labelPills = p => (p.labels || []).filter(l => LABEL[l]).map(l => pill(LABEL[l][0], LABEL[l][1]) + ' ').join('');
 const delivered = p => p.landed ?? p.total;
