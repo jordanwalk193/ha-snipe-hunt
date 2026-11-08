@@ -125,7 +125,7 @@ const saved = p => p.value == null ? 0 : Number(p.value) - (Number(p.is_auction 
 const TIER_RANK = {fire: 0, green: 1, yellow: 2};
 // Sweep focus (the bot's sweep.toml): why a pick is worth a look, what it costs
 // delivered, and its sweep score. Highest score first, then the cheapest delivered.
-const LABEL = {ODDBALL: ['🦄 Oddball', '#00897b'], TYPO: ['✏️ Typo', '#5e35b1'], 'NEW-CARD': ['🆕 New card', '#2e7d32'],
+const LABEL = {PRIORITY: ['🎯 Case hit', '#6a1b9a'], ODDBALL: ['🦄 Oddball', '#00897b'], TYPO: ['✏️ Typo', '#5e35b1'], 'NEW-CARD': ['🆕 New card', '#2e7d32'],
   AUTO: ['✍️ Auto', '#c62828'], 'LOW-NUMBERED': ['#️⃣ Low #', '#ef6c00']};
 const labelPills = p => (p.labels || []).filter(l => LABEL[l]).map(l => pill(LABEL[l][0], LABEL[l][1]) + ' ').join('');
 const delivered = p => p.landed ?? p.total;
@@ -943,6 +943,76 @@ const PANELS = {
       top.map((p, i) => pickLine(p,
         `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
+  }],
+
+  priority: ['Case hits & priority', false, c => {
+    // The bot's casehits.md: the cards hunted first, every live copy cheapest
+    // first against the row's ceiling, and the "hype" cards titled SSP or case
+    // hit that sell like commons.
+    const v = c.d.priority;
+    if (!v) return empty('Update the bot to see this: it needs a version that hunts case hits (casehits.md).');
+    if (!v.rows.length) return empty('casehits.md in the bot\'s repo is empty. Add the cards you want hunted first.');
+    const KIND = {'Case hit': '#6a1b9a', SSP: '#c62828', Variation: '#ef6c00', Auto: '#5e35b1', Grail: '#c9a227', Event: '#1e88e5', Hype: '#757575'};
+    const real = v.rows.filter(r => !r.hype), hype = v.rows.filter(r => r.hype);
+    const view = store('prio_view', v.live_n ? 'sale' : 'list');
+    const soldTxt = r => r.sold ? `sold ${r.sold.n}× · typical <b style="color:var(--primary-text-color)">${money(r.sold.median)}</b>${r.sold.n > 1 ? ` (${money(r.sold.low)}–${money(r.sold.high)})` : ''}` : 'no sale on record';
+    const head = r => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div style="min-width:0"><b>${esc(r.card)}</b><div style="font-size:12px;margin-top:3px">${pill(esc(r.kind), KIND[r.kind] || '#546e7a')}${r.owned ? ' ' + pill('✓ You own one', '#2e7d32') : ''}${r.ceiling ? ` <span class="muted">ceiling <b style="color:var(--primary-text-color)">${money(r.ceiling)}</b></span>` : ''}</div></div>
+        <a class="btn" href="${esc(r.ebay)}" target="_blank" rel="noopener" style="flex:none">eBay</a></div>`;
+    const copy = (x, r) => {
+      const under = r.ceiling && x.total <= r.ceiling;
+      return `<div data-row class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0 8px 6px">${thumb(x, 44, 60)}
+        <div style="flex:1;min-width:0"><a class="title" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>
+          <div style="font-size:13px;margin-top:2px">${under ? pill('✅ Under your ceiling', '#2e7d32') + ' ' : ''}<b>${money(x.price)}</b> + ${shipTxt(x)}${x.is_auction ? ' · auction' + (x.bids ? ', ' + x.bids + (x.bids === 1 ? ' bid' : ' bids') : '') + (x.end_time ? ', ends ' + when(x.end_time) : '') : (x.best_offer ? ' · Best Offer' : ' · Buy It Now')}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${esc(x.seller)} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(x.item_id)}</b></div></div></div>`;
+    };
+    const sale = real.filter(r => r.live.length).sort((a, b) => b.under - a.under || a.live[0].total - b.live[0].total);
+    let body;
+    if (view === 'sale') {
+      body = sale.length ? sale.map(r => `<div class="line" style="padding:10px 0">${head(r)}<div class="muted" style="font-size:12px;margin:4px 0 2px">${soldTxt(r)} · ${r.live.length} for sale</div>${r.live.slice(0, 3).map(x => copy(x, r)).join('')}${r.live.length > 3 ? `<div class="muted" style="font-size:12px;padding:2px 0 0 6px">+${r.live.length - 3} more from ${money(r.live[3].total)}: <a href="${esc(r.ebay)}" target="_blank" rel="noopener">see them all on eBay</a></div>` : ''}</div>`).join('')
+        : empty('None of these is for sale right now. The bot searches a few of them every hour and alerts you when a copy shows up under its ceiling.');
+    } else if (view === 'hype') {
+      body = `<div class="muted" style="font-size:12px;margin:8px 0 4px;line-height:1.5">Cards sellers title "SSP" or "case hit" that sell like commons. The bot never alerts on these and keeps the normal price ceiling for them. Check the serial number and the pack odds, not the title.</div>` +
+        hype.map(r => `<div class="line" style="padding:9px 0">${head(r)}<div style="font-size:13px;margin-top:4px">${esc(r.rare)}</div><div class="muted" style="font-size:12px;margin-top:3px">${soldTxt(r)}${r.live.length ? ` · ${r.live.length} listed now, from ${money(r.live[0].total)}` : ''}</div></div>`).join('');
+    } else {
+      body = real.map(r => `<div class="line" style="padding:9px 0">${head(r)}<div style="font-size:13px;margin-top:4px">${esc(r.rare)}</div><div class="muted" style="font-size:12px;margin-top:3px">${soldTxt(r)} · ${r.live.length ? `<b style="color:var(--primary-text-color)">${r.live.length}</b> for sale now${r.under ? `, ${r.under} under ceiling` : ''}` : 'none for sale now'}</div></div>`).join('');
+    }
+    return `<div style="padding-top:10px"></div>` + grid(4, [
+      stat('ON THE LIST', v.n, '#6a1b9a', '🎯'),
+      stat('FOR SALE', v.live_n, '#1e88e5', '🛒'),
+      stat('UNDER CEILING', v.under_n, '#2e7d32', '✅'),
+      stat('YOU OWN', v.owned_n, '#546e7a', '📒'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5">Case hits, short prints and grails from the bot's casehits.md. Each one gets its own eBay searches, its own price ceiling instead of the $25 sweep cap, the 🎯 label on picks, and one alert when a new copy is listed under its ceiling.</div>` +
+      chips('prio_view', 'sale', [['sale', '🛒 For sale' + (sale.length ? ' ' + v.live_n : '')], ['list', '📋 The list'], ['hype', '⚠️ Hype check' + (hype.length ? ' ' + hype.length : '')]], view) + body;
+  }],
+
+  learn: ['Walker card school', false, c => {
+    // guide.md from the bot, with the lessons' numbers from its own sales ledger.
+    const g = c.d.learn;
+    if (!g) return empty('Update the bot to see this: it needs a version with the card guide (guide.md).');
+    const md = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    const tabs = g.sections.map((s, i) => ['s' + i, esc(s.title)]).concat([['live', '📈 Live numbers'], ['quiz', '🧠 Quiz']]);
+    const pick = store('learn_tab', 's0'), tab = tabs.some(t => t[0] === pick) ? pick : 's0';
+    let body;
+    if (tab === 'live') {
+      const lad = g.ladder.filter(r => r.n), top = Math.max(1, ...lad.filter(r => r.enough).map(r => r.median));
+      const COLOR = r => r.rung === 'Not numbered' ? '#546e7a' : (/^\/(2 to|10|11)/.test(r.rung) || r.rung === '1/1' ? '#c62828' : (/25|26/.test(r.rung) ? '#ef6c00' : '#1e88e5'));
+      body = `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">From ${Number(g.sales_n).toLocaleString()} sales the bot recorded, delivered prices. Raw cards with no autograph, relic or slab, so the print run is the only difference. These are medians across different cards, not the same card at each step.</div>` +
+        cap('WHAT A PRINT RUN ADDS') + lad.map(r => `<div class="line" style="padding:5px 0;font-size:13px"><div style="display:flex;justify-content:space-between;gap:8px"><span><b>${esc(r.rung)}</b> <span class="muted" style="font-size:12px">· ${r.n} sale${r.n === 1 ? '' : 's'}</span></span><span style="flex:none">${r.enough ? `<b>${money(r.median)}</b>${r.x != null && r.x !== 1 ? ` <span class="muted" style="font-size:12px">${r.x}× unnumbered</span>` : ''}` : '<span class="muted">too few sales</span>'}</span></div>
+          ${r.enough ? `<div class="bar" style="margin-top:3px"><div style="width:${Math.max(2, Math.round(r.median / top * 100))}%;background:${COLOR(r)}"></div></div>` : ''}</div>`).join('') +
+        cap('WHAT ELSE ADDS VALUE') + g.premiums.map(p => `<div class="line" style="padding:7px 0;font-size:13px;display:flex;justify-content:space-between;gap:10px"><span><b>${esc(p.what)}</b><br><span class="muted" style="font-size:12px">vs ${esc(p.vs)} · ${p.with.n} and ${p.without.n} sales</span></span><span style="flex:none;text-align:right">${p.enough ? `<b style="font-size:16px">${p.x}×</b><br><span class="muted" style="font-size:12px">${money(p.with.median)} vs ${money(p.without.median)}</span>` : '<span class="muted">not enough<br>sales yet</span>'}</span></div>`).join('') +
+        cap('TYPICAL SALE BY PRODUCT') + (() => { const ps = g.products.slice(0, 14), m = Math.max(1, ...ps.map(p => p.median));
+          return ps.map(p => hbar(esc(p.family), p.median, m, c.accent, `${money(p.median)} · ${p.n}`)).join(''); })();
+    } else if (tab === 'quiz') {
+      body = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Tap a question to see the answer.</div>` +
+        g.quiz.map((q, i) => `<details class="line" style="padding:9px 0;font-size:14px"><summary style="cursor:pointer;font-weight:600">${i + 1}. ${md(q.q)}</summary><div style="margin-top:6px;line-height:1.5">${md(q.a)}</div></details>`).join('');
+    } else {
+      const s = g.sections[Number(tab.slice(1))] || g.sections[0];
+      body = `<div style="font-size:16px;font-weight:700;margin:10px 0 4px">${esc(s.title)}</div>` + s.blocks.map(b => b.ul
+        ? `<ul style="margin:4px 0 8px;padding-left:20px;line-height:1.55;font-size:14px">${b.ul.map(li => `<li style="margin:4px 0">${md(li)}</li>`).join('')}</ul>`
+        : `<p style="margin:6px 0;line-height:1.55;font-size:14px">${md(b.p)}</p>`).join('');
+    }
+    return `<div style="padding-top:8px"></div>` + chips('learn_tab', 's0', tabs, tab) + body;
   }],
 
   rarest: ['Rarest on eBay', false, c => {
@@ -1975,6 +2045,11 @@ class SnipeHuntStrategy {
       ]},
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
+        {...section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')), column_span: 3},
+      ]},
+      learn: {title: 'Learn', path: 'learn', icon: 'mdi:school-outline', sections: [
+        {...section(heading('Walker card school', 'mdi:school-outline'), panel('learn')), column_span: 2},
+        section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')),
       ]},
       collection: {title: 'Collection', path: 'collection', icon: 'mdi:cards', sections: [
         section(heading('Collection', 'mdi:cards', id('sensor', 'collection')), panel('collection'),
@@ -2015,6 +2090,8 @@ class SnipeHuntStrategy {
     const asked = config.tabs || options.tabs || Object.keys(VIEWS);
     const upgraded = asked.join(',') === 'today,picks,gixen,collection,bot' ? Object.keys(VIEWS)
       : [...new Set(asked.map(t => OLD[t] || t))];
+    // Learn came after the tabs option: it shows even when saved tabs predate it.
+    if (!upgraded.includes('learn')) upgraded.push('learn');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
