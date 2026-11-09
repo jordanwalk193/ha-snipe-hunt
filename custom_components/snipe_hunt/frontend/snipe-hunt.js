@@ -635,6 +635,45 @@ const heatGrid = types => {
     Object.entries(types).map(([name, g]) => `<div class="hl">${esc(name)}</div>${cell(g.day)}${cell(g.evening)}`).join('') + `</div>`;
 };
 
+// ---- the board: every auction with your name on it, picks and Gixen snipes
+// merged by item id and sorted by when they end, like a departures board.
+const BOARD = {
+  outbid: ['OUTBID', '#e53935'], check: ['CHECK', '#ff6d00'], need: ['NEEDS SNIPE', '#ff9100'],
+  sniped: ['SNIPED', '#9575cd'], added: ['ADDED', '#43a047'], past: ['PAST MAX', '#78909c'], watch: ['WATCHING', '#78909c'],
+};
+const boardRows = c => {
+  const rows = new Map();
+  c.allPicks.filter(p => p.is_auction && p.end_time && msLeft(p.end_time) > 0).forEach(p => rows.set(p.item_id, {p}));
+  c.snipes.forEach(s => { const r = rows.get(s.item_id); if (r) r.s = s; else rows.set(s.item_id, {s}); });
+  (((c.d.lowball || {}).targets) || []).filter(t => t.sniped && !rows.has(t.item_id) && msLeft(t.end_time) > 0).forEach(t => rows.set(t.item_id, {t}));
+  const needIds = new Set(c.need.map(p => p.item_id));
+  return [...rows.values()].map(({p, s, t}) => {
+    const src = p || s || t;
+    const now = Number(s ? s.current_bid : (p ? (p.bid_now ?? p.price) : t.price)) || 0;
+    const mine = s ? s.max_bid : (p && p.snipe != null ? p.snipe : (p && p.marked && p.marked.max ? Number(p.marked.max) : (t ? t.snipe : null)));
+    const botMax = p ? p.max : (s ? s.bot_max : t.snipe);
+    const value = p ? p.value : (s && s.check && s.check.value != null ? s.check.value : (t ? t.value : null));
+    const ship = p ? (p.combined_ship ? 0 : Number(p.shipping ?? 5)) : (t ? Number(t.shipping ?? 5) : 0);
+    let state = 'watch';
+    if ((s && s.outbid) || (mine != null && now >= Number(mine))) state = 'outbid';
+    else if (s && ((s.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(s))) state = 'check';
+    else if (s || (p && p.snipe != null) || t) state = 'sniped';
+    else if (p && p.marked) state = 'added';
+    else if (p && needIds.has(p.item_id)) state = 'need';
+    else if (p && room(p) < 0) state = 'past';
+    return {id: src.item_id, end: src.end_time, title: p ? p.card : (s ? (s.title || s.item_id) : t.title), url: src.url, seller: src.seller || '',
+      tier: src.tier, now, mine, botMax, value, ship, state, bids: p ? p.bids : null,
+      win: s && s.check && s.check.win != null ? s.check.win : (p ? p.win : null), fresh: p ? isFresh(p) : false};
+  }).sort((x, y) => x.end < y.end ? -1 : 1);
+};
+// What a pick costs you, delivered, on the steal map: the bot's max for an auction
+// (or today's bid), the asking price for a Buy It Now, shipping included.
+const mapPay = (p, mode) => (p.is_auction ? (mode === 'now' || p.max == null ? Number(p.bid_now ?? p.price) : Number(p.max)) : Number(p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+// A chart's drawing width: the card's own, so its text is drawn 1:1 (the next redraw follows a resize).
+const cardWidth = c => Math.max(300, Math.min(1200, (c.card.offsetWidth || c.card.clientWidth || 628))) - 28;
+const clockTime = iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+const dayWord = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], {weekday: 'short'}); };
+
 const PANELS = {
   hero: ['Command center', true, c => {
     // The top of Tonight: who the bot is hunting, the numbers that matter, the
@@ -677,6 +716,171 @@ const PANELS = {
       ${nextHtml}
       ${timeline(c)}
     </div>`;
+  }],
+
+  tape: ['Sales tape', false, c => {
+    // The newest real sales of the player's cards as a slow ticker: the market
+    // going by under the command center. Green is a pick that closed under the
+    // bot's max, red one that went past it. Hover pauses it; a tap opens the sale.
+    const sold = ((c.d.market || {}).sold || []).slice(0, 30);
+    if (!sold.length) return '';
+    const player = ((c.d.profile || {}).player || '').trim();
+    const strip = player ? new RegExp(player.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig') : null;
+    const item = x => {
+      const k = x.call, color = k ? (k.under_max ? '#69f0ae' : '#ff8a80') : 'inherit';
+      const name = (strip ? x.title.replace(strip, '') : x.title).replace(/\s+/g, ' ').trim();
+      return `<a class="tp" href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)} · ${x.kind === 'bin' ? 'Buy It Now' : (x.bids || 0) + ' bid' + (x.bids === 1 ? '' : 's')} · sold ${esc(when(x.sold_at))}${k ? (k.under_max ? ' · a pick that closed under the max' : ' · a pick that went past the max') : ''}"><b style="color:${color}">${money(x.total)}</b> ${esc(name.slice(0, 52))}<small>${x.kind === 'bin' ? 'BIN' : (x.bids || 0) + ' bid' + (x.bids === 1 ? '' : 's')} · ${esc(clockTime(x.sold_at))}</small></a>`;
+    };
+    const run = sold.map(item).join('');
+    return `<div class="tape" style="--n:${sold.length}"><div class="tape-tag">🔨 SOLD<small>${Number((c.d.market || {}).count_7d || 0).toLocaleString()} this week</small></div><div class="tape-win"><div class="tape-run">${run}${run}</div></div></div>`;
+  }],
+
+  board: ['The board', true, c => {
+    // Every auction with your name on it, soonest first: the picks, your Gixen
+    // snipes (on picks or not) and lowball snipes you set. Each row ticks by the
+    // second and says what it needs from you; the footer adds up what every snipe
+    // in the window would cost if it won.
+    const all = boardRows(c);
+    if (!all.length) return empty(`No auction with your name on it is live right now.${c.gixenOn ? '' : ' Gixen can\'t be read, so only picks can show.'}`);
+    const span = store('board_span', '24');
+    const win = {24: 24 * HOUR, 48: 48 * HOUR, all: Infinity}[span] || 24 * HOUR;
+    let rows = all.filter(r => msLeft(r.end) < win);
+    const auto = !rows.length;   // nothing that soon: show the lot
+    if (auto) rows = all;
+    const n = Number(c.card.config.count) || 14;
+    const paged = store('board_limit', 'page') !== 'all';
+    const shown = paged ? rows.slice(0, n) : rows;
+    const count = k => rows.filter(r => r.state === k).length;
+    const mine = rows.filter(r => r.mine != null && r.state !== 'outbid');
+    const exposure = mine.reduce((t, r) => t + Number(r.mine) + r.ship, 0);
+    const valued = mine.filter(r => r.value), worthSum = valued.reduce((t, r) => t + Number(r.value), 0), paySum = valued.reduce((t, r) => t + Number(r.mine) + r.ship, 0);
+    const line = r => {
+      const ms = msLeft(r.end), [label, color] = BOARD[r.state];
+      const yours = r.mine ?? r.botMax;
+      const off = r.value && yours != null ? Math.round(100 * (1 - (Number(yours) + r.ship) / Number(r.value))) : null;
+      const offColor = off == null ? '' : off >= 50 ? '#69f0ae' : off >= 25 ? '#ffd740' : off >= 0 ? '#bdbdbd' : '#ff8a80';
+      const btn = r.state === 'need' ? (r.botMax != null ? copyBtn('Max ' + cents(r.botMax), cents(r.botMax)) : '') + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
+        : r.state === 'outbid' && r.win != null && Number(r.win) > r.now ? copyBtn('Win ' + cents(r.win), cents(r.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
+        : r.state === 'check' ? linkBtn('Gixen ↗', GIXEN_URL, '#ff6d00') : '';
+      return `<div class="brow${ms < HOUR ? ' soon' : ''}${r.state === 'need' ? ' need' : ''}" data-row data-find="${esc((r.title + ' ' + r.seller + ' ' + r.id).toLowerCase())}">
+        <div class="bclock" data-end="${esc(r.end)}" data-text style="color:${clockColor(ms)}">${clockTxt(ms)}</div>
+        <div class="bwhen">${esc(clockTime(r.end))}<small>${esc(dayWord(r.end))}</small></div>
+        <div class="bcard"><a class="title" href="${esc(r.url)}" target="_blank" rel="noopener">${(TIER[r.tier] || [''])[0]} ${esc(r.title)}</a><small>${esc(r.seller)}${r.bids != null ? ` · ${r.bids} bid${r.bids === 1 ? '' : 's'}` : ''}${r.fresh ? ' · ✨ new' : ''}</small></div>
+        <div class="bnums">
+          <div class="bnum"><small>NOW</small>${money(r.now)}</div>
+          <div class="bnum"><small>${r.mine != null ? 'SNIPE' : 'MAX'}</small>${yours != null ? cents(yours) : '–'}</div>
+          <div class="bnum"><small>WORTH</small>${r.value ? worth(r.value) : '–'}${off != null ? ` <b style="color:${offColor}">${off >= 0 ? '-' + off : '+' + -off}%</b>` : ''}</div>
+        </div>
+        <div class="bstate" style="--c:${color}">${label}</div>
+        <div class="bact">${btn}</div>
+      </div>`;
+    };
+    const tally = [count('sniped') + count('added') ? `<b style="color:#9575cd">${count('sniped') + count('added')}</b> sniped` : '',
+      count('need') ? `<b style="color:#ff9100">${count('need')}</b> need a snipe` : '', count('outbid') ? `<b style="color:#e53935">${count('outbid')}</b> outbid` : '',
+      count('check') ? `<b style="color:#ff6d00">${count('check')}</b> to check` : ''].filter(Boolean).join(' · ');
+    return `<div class="board">
+      <div class="bhead">${chips('board_span', '24', [['24', 'Next 24h'], ['48', '48h'], ['all', 'All ' + all.length]], span)}
+        <div class="muted" style="font-size:12px">${rows.length} auction${rows.length === 1 ? '' : 's'}${auto ? ` (none in the next ${span}h, so every one)` : ''}${tally ? ' · ' + tally : ''}</div></div>
+      ${shown.map(line).join('')}
+      ${rows.length > shown.length ? `<div class="row" style="padding:8px 0 0">${setBtn('Show all ' + rows.length, 'board_limit', 'all', '#546e7a')}</div>` : (!paged && rows.length > n ? `<div class="row" style="padding:8px 0 0">${setBtn('Show fewer', 'board_limit', 'page')}</div>` : '')}
+      <div class="bfoot">${mine.length ? `If every snipe here wins: <b>${money(exposure)}</b> delivered${valued.length ? ` for about <b>${worth(worthSum)}</b> of cards (${Math.round(100 * paySum / worthSum)}% of value${valued.length < mine.length ? `, ${mine.length - valued.length} unpriced` : ''})` : ''}.` : 'No snipe of yours is in this window yet.'}${c.gixenOn ? '' : ' Gixen can\'t be read: only picks and your ✓ marks show.'}</div>
+    </div>`;
+  }],
+
+  map: ['Steal map', true, c => {
+    // Every live pick as a dot: what you would pay, delivered, against what the
+    // card goes for. Above the line is under value; the shaded bands are half
+    // value and a quarter. Bigger dots have more deal stars, a white ring is a
+    // pick already in Gixen. Tap a dot for the pick itself.
+    const mode = store('map_x', 'max');
+    const pts = c.allPicks.filter(p => Number(p.value) > 0).map(p => ({p, x: mapPay(p, mode), y: Number(p.value)})).filter(o => o.x > 0);
+    if (!pts.length) return empty('No live pick has a going rate yet.');
+    const W = cardWidth(c), H = Math.round(Math.min(480, Math.max(300, W * 0.6))), L = 44, R = 64, T = 16, B = 40;
+    const lo = 0.5, hi = Math.max(20, ...pts.map(o => Math.max(o.x, o.y))) * 1.5;
+    const lg = v => Math.log10(Math.max(lo, Math.min(hi, v)));
+    const X = v => L + (lg(v) - lg(lo)) / (lg(hi) - lg(lo)) * (W - L - R);
+    const Y = v => H - B - (lg(v) - lg(lo)) / (lg(hi) - lg(lo)) * (H - T - B);
+    const ticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].filter(t => t >= lo && t <= hi);
+    const axis = ticks.map(t => `<line x1="${X(t).toFixed(1)}" x2="${X(t).toFixed(1)}" y1="${T}" y2="${H - B}" stroke="currentColor" stroke-opacity=".1"/><line x1="${L}" x2="${W - R}" y1="${Y(t).toFixed(1)}" y2="${Y(t).toFixed(1)}" stroke="currentColor" stroke-opacity=".1"/>
+      <text x="${X(t).toFixed(1)}" y="${H - B + 14}" font-size="10" text-anchor="middle">$${t}</text><text x="${L - 5}" y="${(Y(t) + 3.5).toFixed(1)}" font-size="10" text-anchor="end">$${t}</text>`).join('');
+    // value = k × pay: the line of fair price (k = 1), half value (2) and a quarter (4)
+    const zone = (k, fill) => `<path d="M${X(lo)},${Y(lo * k)} L${X(hi / k)},${Y(hi)} L${X(lo)},${Y(hi)} Z" fill="${fill}"/>`;
+    const guide = (k, label, color, dash) => `<line x1="${X(lo)}" y1="${Y(lo * k)}" x2="${X(hi / k)}" y2="${Y(hi)}" stroke="${color}" stroke-width="1.2"${dash ? ' stroke-dasharray="4 4"' : ''}/>
+      <text x="${(X(hi / k) + 4).toFixed(1)}" y="${T + 4}" font-size="10" fill="${color}">${label}</text>`;
+    const sel = store('map_pick', '');
+    const dots = pts.slice().sort((a, b) => (a.p.deal || 0) - (b.p.deal || 0)).map(({p, x, y}) => {
+      const t = TIER[p.tier] || ['', '#546e7a'], off = Math.round(100 * (1 - x / y)), r = 4 + (p.deal || 0) * 1.1, on = sel === p.item_id, got = c.inGixen(p);
+      const cx = X(x).toFixed(1), cy = Y(y).toFixed(1);
+      return `<g class="dot${p.jackpot ? ' jp' : ''}${on ? ' on' : ''}" role="button" data-do="set" data-key="map_pick" data-value="${esc(on ? '' : p.item_id)}">
+        <title>${esc(p.card)} · pay ${money(x)} · goes for ${worth(y)} · ${off >= 0 ? off + '% off' : -off + '% over'}${got ? ' · in Gixen' : ''}</title>
+        <circle cx="${cx}" cy="${cy}" r="13" fill="transparent"/>
+        ${on ? `<circle cx="${cx}" cy="${cy}" r="${(r + 7).toFixed(1)}" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.5"/>` : ''}
+        <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="${t[1]}" fill-opacity="${p.unverified ? .35 : .9}" stroke="${on || got ? '#fff' : '#00000088'}" stroke-width="${on ? 3 : got ? 2 : 1}"/>
+      </g>`;
+    }).join('');
+    const half = pts.filter(o => o.y >= 2 * o.x).length, quarter = pts.filter(o => o.y >= 4 * o.x).length;
+    const offs = pts.map(o => 1 - o.x / o.y).sort((a, b) => a - b), median = Math.round(100 * offs[Math.floor(offs.length / 2)]);
+    const chosen = sel && c.allPicks.find(p => p.item_id === sel);
+    return `<div class="maphead">${chips('map_x', 'max', [['max', 'At the bot\'s max'], ['now', 'At today\'s bid']], mode)}
+      <div class="muted" style="font-size:12px"><b style="color:var(--primary-text-color)">${pts.length}</b> picks · <b style="color:#43a047">${half}</b> at half value or better · <b style="color:#00c853">${quarter}</b> at a quarter · median <b style="color:var(--primary-text-color)">${median}% off</b></div></div>
+    <svg class="map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Steal map">
+      ${zone(2, '#43a04714')}${zone(4, '#00c85318')}${axis}
+      ${guide(1, 'at value', '#e5737388')}${guide(2, 'half', '#43a047bb', true)}${guide(4, 'quarter', '#00c853bb', true)}
+      <text x="${((L + W - R) / 2).toFixed(0)}" y="${H - 4}" font-size="10" text-anchor="middle" letter-spacing="2">YOU PAY, DELIVERED →</text>
+      <text transform="translate(11 ${((T + H - B) / 2).toFixed(0)}) rotate(-90)" font-size="10" text-anchor="middle" letter-spacing="2">GOES FOR →</text>
+      ${dots}
+    </svg>
+    <div class="legend" style="margin-top:2px">${Object.entries(TIER).filter(([k]) => k !== 'drop').map(([k, v]) => `<span><span class="dot" style="background:${v[1]}"></span>${v[0]} ${k === 'fire' ? 'Brag' : k === 'green' ? 'Value' : 'Cheap'}</span>`).join('')}<span><span class="dot" style="background:transparent;box-shadow:inset 0 0 0 2px #fff"></span>in Gixen</span><span class="muted">bigger = more deal stars · ${mode === 'max' ? 'auctions at the bot\'s max, Buy It Nows at the asking price' : 'auctions at today\'s bid'}, shipping included</span></div>
+    ${chosen ? `<div style="margin-top:6px">${pickLine(chosen, '', '')}</div>` : `<div class="muted" style="font-size:12px;margin-top:8px">Tap a dot to see the pick here.</div>`}`;
+  }],
+
+  growth: ['How it grew', false, c => {
+    // The collection week by week: what you had paid by then (grey) against what
+    // those cards are worth today by the ledger (green), with cards bought each
+    // week as bars. The gap between the lines is the program's whole point.
+    const cards = c.cards.filter(x => x.d && /^\d{4}-\d{2}-\d{2}/.test(x.d)).sort((a, b) => a.d < b.d ? -1 : 1);
+    if (cards.length < 2) return empty('Not enough dated cards yet.');
+    const day = s => new Date(s.slice(0, 10) + 'T12:00');
+    const weekOf = d => { const x = new Date(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); x.setHours(12, 0, 0, 0); return x; };
+    const first = weekOf(day(cards[0].d)), last = weekOf(new Date());
+    const weeks = [];
+    for (let w = new Date(first); w <= last; w.setDate(w.getDate() + 7)) weeks.push({at: new Date(w), n: 0, paid: 0, worth: 0});
+    if (!weeks.length) return empty('Nothing dated yet.');
+    cards.forEach(x => {
+      const i = Math.min(weeks.length - 1, Math.max(0, Math.round((weekOf(day(x.d)) - first) / (7 * 24 * HOUR))));
+      weeks[i].n++; weeks[i].paid += Number(x.p) || 0; weeks[i].worth += Number(x.v ?? x.p) || 0;
+    });
+    let cp = 0, cw = 0;
+    weeks.forEach(w => { cp += w.paid; cw += w.worth; w.cp = cp; w.cw = cw; });
+    const W = cardWidth(c), H = Math.round(Math.min(300, Math.max(220, W * 0.55))), L = 48, R = 18, T = 22, B = 48, BARS = 36;
+    const top = Math.max(1, cp, cw) * 1.1;
+    const X = i => L + (weeks.length > 1 ? i / (weeks.length - 1) : .5) * (W - L - R);
+    const Y = v => T + (1 - v / top) * (H - T - B - BARS);
+    const path = key => weeks.map((w, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(w[key]).toFixed(1)}`).join(' ');
+    const area = key => path(key) + ` L${X(weeks.length - 1).toFixed(1)},${Y(0).toFixed(1)} L${X(0).toFixed(1)},${Y(0).toFixed(1)} Z`;
+    const maxN = Math.max(1, ...weeks.map(w => w.n)), bw = Math.max(3, Math.min(18, (W - L - R) / weeks.length - 4));
+    const bars = weeks.map((w, i) => { const h = w.n / maxN * (BARS - 8);
+      return w.n ? `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${(H - B - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${c.accent}" fill-opacity=".85"><title>${w.n} card${w.n === 1 ? '' : 's'} the week of ${w.at.toLocaleDateString([], {month: 'short', day: 'numeric'})} · ${money(w.paid)} paid</title></rect>` : ''; }).join('');
+    const months = weeks.map((w, i) => (i === 0 || w.at.getMonth() !== weeks[i - 1].at.getMonth()) ? `<text x="${X(i).toFixed(1)}" y="${H - 4}" font-size="10" text-anchor="${i === 0 ? 'start' : 'middle'}">${w.at.toLocaleDateString([], {month: 'short'})}</text>` : '').join('');
+    const rules = [.25, .5, .75, 1].map(f => `<line x1="${L}" x2="${W - R}" y1="${Y(f * top).toFixed(1)}" y2="${Y(f * top).toFixed(1)}" stroke="currentColor" stroke-opacity=".1"/><text x="${L - 6}" y="${(Y(f * top) + 3.5).toFixed(1)}" font-size="10" text-anchor="end">$${Math.round(f * top)}</text>`).join('');
+    const marks = weeks.map((w, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(w.cw).toFixed(1)}" r="7" fill="transparent"><title>Week of ${w.at.toLocaleDateString([], {month: 'short', day: 'numeric'})} · ${money(w.cp)} paid so far · worth ${money(w.cw)} today</title></circle>`).join('');
+    const xe = X(weeks.length - 1).toFixed(1), gainUp = cw >= cp;
+    const best = weeks.reduce((a, b) => b.paid > a.paid ? b : a);
+    const valued = c.cards.filter(x => x.v != null).length;
+    return `<div style="padding-top:10px"></div>` + grid(3, [
+      stat('WEEKS COLLECTING', weeks.length, c.accent, '📅'),
+      stat('CARDS A WEEK', (cards.length / weeks.length).toFixed(1), '#1e88e5', '🃏'),
+      stat('BIGGEST WEEK', '$' + Math.round(best.paid), '#fb8c00', '🧾'),
+    ]) + `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Paid against worth, week by week">
+      ${rules}
+      <path d="${area('cp')}" fill="#78909c" fill-opacity=".16"/><path d="${area('cw')}" fill="${gainUp ? '#43a047' : '#e53935'}" fill-opacity=".12"/>
+      <path d="${path('cp')}" fill="none" stroke="#90a4ae" stroke-width="2" stroke-linejoin="round"/>
+      <path d="${path('cw')}" fill="none" stroke="${gainUp ? '#43a047' : '#e53935'}" stroke-width="2.5" stroke-linejoin="round"/>
+      <text x="${xe}" y="${(Y(cw) - 7).toFixed(1)}" font-size="11" font-weight="700" text-anchor="end" fill="${gainUp ? '#43a047' : '#e53935'}">worth ${money(cw)}</text>
+      <text x="${xe}" y="${(Y(cp) + 14).toFixed(1)}" font-size="11" font-weight="700" text-anchor="end" fill="#90a4ae">paid ${money(cp)}</text>
+      ${bars}${months}${marks}
+    </svg>
+    <div class="muted" style="font-size:12px;line-height:1.5;margin-top:4px">Grey is what you had paid by each week; ${gainUp ? 'green' : 'red'} is what those same cards are worth today (${valued} of ${c.cards.length} priced by the ledger's newest sale of the same card, the rest at what you paid). Bars are cards bought each week.</div>`;
   }],
 
   buy_now: ['Buy now, think later', true, c => {
@@ -1793,6 +1997,66 @@ const STYLE = `
   .dual-worth { top: 50% !important; }
   .dual-txt { flex: none; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .warn { margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: #fb8c0022; border: 1px solid #fb8c0077; font-size: 12px; line-height: 1.7; }
+  /* the sales tape */
+  .tape { display: flex; align-items: center; gap: 12px; margin: 8px 0 2px; }
+  .tape-tag { flex: none; font-size: 10px; letter-spacing: 2px; font-weight: 800; color: var(--secondary-text-color); line-height: 1.2; }
+  .tape-tag small { display: block; font-size: 10px; letter-spacing: 0; font-weight: 500; text-transform: none; }
+  .tape-win { flex: 1; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent); }
+  .tape-run { display: flex; width: max-content; animation: tape calc(var(--n, 20) * 3.4s) linear infinite; }
+  .tape-win:hover .tape-run { animation-play-state: paused; }
+  @keyframes tape { to { transform: translateX(-50%); } }
+  .tp { white-space: nowrap; text-decoration: none; color: var(--primary-text-color); font-size: 13px; font-variant-numeric: tabular-nums; margin-right: 28px; }
+  .tp:hover { text-decoration: underline; }
+  .tp small { color: var(--secondary-text-color); margin-left: 6px; font-size: 11px; }
+  @media (prefers-reduced-motion: reduce) { .tape-run { animation: none; } .tape-win { overflow-x: auto; -webkit-mask-image: none; mask-image: none; } }
+  /* the board */
+  .board { margin-top: 10px; padding: 10px 12px 10px; border-radius: 14px; border: 1px solid var(--divider-color);
+           background: color-mix(in srgb, var(--card-background-color) 72%, #000); }
+  .bhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; margin-bottom: 4px; }
+  .bhead .row { margin-top: 0; }
+  .brow { display: grid; grid-template-columns: 76px 64px minmax(0, 1fr) 64px 70px 92px 104px auto; gap: 0 10px; align-items: center; }
+  .bnums { display: contents; }
+  .brow { padding: 8px 12px 8px 9px; margin: 0 -12px; border-top: 1px solid var(--divider-color); border-left: 3px solid transparent; }
+  .bact:empty { display: none; }
+  .brow.soon { border-left-color: #e53935; background: linear-gradient(90deg, #e5393518, transparent 45%); }
+  .brow.need { background: linear-gradient(90deg, #ff910018, transparent 45%); }
+  .bclock, .bnum { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+  .bclock { font-size: 15px; font-weight: 800; letter-spacing: .3px; white-space: nowrap; }
+  .bwhen { font-size: 12.5px; line-height: 1.2; white-space: nowrap; }
+  .bwhen small, .bcard small, .bnum small { display: block; font-size: 10px; color: var(--secondary-text-color); }
+  .bnum small { font-size: 8.5px; letter-spacing: 1.5px; font-weight: 700; font-family: inherit; }
+  .bcard { min-width: 0; }
+  .bcard .title { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bcard small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bnum { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .bnum b { font-size: 11px; }
+  .bstate { font-size: 9.5px; letter-spacing: 1.5px; font-weight: 800; color: var(--c); text-align: center; white-space: nowrap; padding: 4px 6px; border-radius: 6px;
+            border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 14%, transparent); }
+  .brow.need .bstate { animation: blink 1.3s steps(2, start) infinite; }
+  @keyframes blink { to { opacity: .3; } }
+  .bact { display: flex; gap: 4px; justify-content: flex-end; }
+  .bact .btn { padding: 4px 8px; white-space: nowrap; }
+  .bfoot { font-size: 12px; padding-top: 10px; color: var(--secondary-text-color); line-height: 1.5; }
+  .bfoot b { color: var(--primary-text-color); }
+  @media (max-width: 760px) {
+    .brow { grid-template-columns: 78px minmax(0, 1fr) auto; grid-template-areas: "clock card state" "when nums nums" "act act act"; gap: 5px 8px; }
+    .bact { justify-content: flex-start; }
+    .bclock { grid-area: clock; } .bwhen { grid-area: when; } .bcard { grid-area: card; } .bstate { grid-area: state; } .bact { grid-area: act; }
+    .bnums { grid-area: nums; display: flex; gap: 12px; }
+    .bnum { font-size: 12px; }
+    .bwhen { font-size: 12px; } .bwhen small { display: inline; margin-left: 3px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .brow.need .bstate { animation: none; } }
+  /* steal map and growth chart */
+  .maphead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; margin-top: 8px; }
+  .maphead .row { margin-top: 0; }
+  svg.map, svg.chart { display: block; width: 100%; height: auto; margin-top: 6px; color: var(--secondary-text-color); font-family: inherit; }
+  svg.map text, svg.chart text { fill: currentColor; }
+  svg.map .dot { cursor: pointer; }
+  svg.map .dot:hover circle:last-child { stroke: #fff; stroke-width: 2.5; }
+  svg.map .dot.jp circle:last-child { animation: dotpulse 1.2s ease-in-out infinite; }
+  @keyframes dotpulse { 50% { stroke: #d50000; stroke-width: 5; } }
+  @media (prefers-reduced-motion: reduce) { svg.map .dot.jp circle:last-child { animation: none; } }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
 `;
@@ -1831,6 +2095,7 @@ class SnipeHuntCard extends HTMLElement {
       throw new Error('Set panel to one of: ' + Object.keys(PANELS).join(', '));
     }
     this.config = config;
+    this._html = null;
     const feed = feedFor(config.entry);
     if (this.feed !== feed) {   // the card moved to another bot
       if (this.feed) this.feed.cards.delete(this);
@@ -1870,6 +2135,7 @@ class SnipeHuntCard extends HTMLElement {
       const ms = msLeft(el.dataset.end);
       if (ms <= 0 && el.dataset.ended == null) { el.dataset.ended = '1'; ended = true; }
       if (el.dataset.big != null) { el.textContent = bigClock(ms); el.parentElement.style.color = clockColor(ms); }
+      else if (el.dataset.text != null) { el.textContent = clockTxt(ms); el.style.color = clockColor(ms); }
       else { el.textContent = '⏱ ' + clockTxt(ms); el.style.background = clockColor(ms); }
     });
     if (ended) this.draw();
@@ -1882,6 +2148,7 @@ class SnipeHuntCard extends HTMLElement {
     if (!this.config || !this.isConnected) return;
     const title = this.config.title ? `<div style="font-size:16px;font-weight:600;padding-top:10px">${esc(this.config.title)}</div>` : '';
     if (!this.feed || !this.feed.data) {
+      this._html = null;
       this.body.innerHTML = title + empty(esc((this.feed && this.feed.error) || 'Waiting for the bot…'));
       return;
     }
@@ -1898,7 +2165,10 @@ class SnipeHuntCard extends HTMLElement {
     } catch (err) {
       html = empty('This panel hit an error: ' + esc(err.message));
     }
-    this.body.innerHTML = title + html;
+    const out = title + html;
+    if (out === this._html && this.body.firstChild) return;   // nothing changed: leave the DOM be
+    this._html = out;
+    this.body.innerHTML = out;
     const input = this.body.querySelector('input[data-search]');
     if (input) {
       this.find(input);
@@ -2036,6 +2306,8 @@ class SnipeHuntStrategy {
     const VIEWS = {
       tonight: {title: 'Tonight', path: 'tonight', icon: 'mdi:weather-night', sections: [
         {...section(panel('hero')), column_span: 3},
+        {...section(panel('tape')), column_span: 3},
+        {...section(heading('The board', 'mdi:clock-fast'), panel('board')), column_span: 3},
         {...section(heading('Buy now, think later', 'mdi:lightning-bolt'), panel('buy_now')), column_span: 3},
         {...section(heading('Ending soonest', 'mdi:timer-sand'), panel('ending')), column_span: 3},
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
@@ -2045,6 +2317,7 @@ class SnipeHuntStrategy {
       ]},
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
+        {...section(heading('Steal map', 'mdi:chart-scatter-plot'), panel('map')), column_span: 3},
         {...section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')), column_span: 3},
       ]},
       learn: {title: 'Learn', path: 'learn', icon: 'mdi:school-outline', sections: [
@@ -2062,7 +2335,7 @@ class SnipeHuntStrategy {
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
-        section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('Market trends', 'mdi:trending-up'), panel('trends')),
+        section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('How it grew', 'mdi:chart-areaspline'), panel('growth'), heading('Market trends', 'mdi:trending-up'), panel('trends')),
         section(heading('Big money', 'mdi:cash-multiple'), panel('whales')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Hall of Fame', 'mdi:trophy-variant'), panel('hall'), heading('Brag board', 'mdi:trophy-award'), panel('brag')),
