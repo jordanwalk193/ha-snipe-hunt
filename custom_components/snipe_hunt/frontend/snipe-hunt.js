@@ -806,7 +806,7 @@ const PANELS = {
     // value = k × pay: the line of fair price (k = 1), half value (2) and a quarter (4)
     const zone = (k, fill) => `<path d="M${X(lo)},${Y(lo * k)} L${X(hi / k)},${Y(hi)} L${X(lo)},${Y(hi)} Z" fill="${fill}"/>`;
     const guide = (k, label, color, dash) => `<line x1="${X(lo)}" y1="${Y(lo * k)}" x2="${X(hi / k)}" y2="${Y(hi)}" stroke="${color}" stroke-width="1.2"${dash ? ' stroke-dasharray="4 4"' : ''}/>
-      <text x="${(X(hi / k) + 4).toFixed(1)}" y="${T + 4}" font-size="10" fill="${color}">${label}</text>`;
+      <text x="${(X(hi / k) + 4).toFixed(1)}" y="${T + 4 + (k === 2 ? 12 : 0)}" font-size="10" fill="${color}">${label}</text>`;
     const sel = store('map_pick', '');
     const dots = pts.slice().sort((a, b) => (a.p.deal || 0) - (b.p.deal || 0)).map(({p, x, y}) => {
       const t = TIER[p.tier] || ['', '#546e7a'], off = Math.round(100 * (1 - x / y)), r = 4 + (p.deal || 0) * 1.1, on = sel === p.item_id, got = c.inGixen(p);
