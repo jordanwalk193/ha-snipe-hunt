@@ -727,7 +727,7 @@ const PANELS = {
     const player = ((c.d.profile || {}).player || '').trim();
     const strip = player ? new RegExp(player.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig') : null;
     const item = x => {
-      const k = x.call, color = k ? (k.under_max ? '#69f0ae' : '#ff8a80') : 'inherit';
+      const k = x.call, color = k ? (k.under_max ? '#2e7d32' : '#e53935') : 'inherit';
       const name = (strip ? x.title.replace(strip, '') : x.title).replace(/\s+/g, ' ').trim();
       return `<a class="tp" href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)} · ${x.kind === 'bin' ? 'Buy It Now' : (x.bids || 0) + ' bid' + (x.bids === 1 ? '' : 's')} · sold ${esc(when(x.sold_at))}${k ? (k.under_max ? ' · a pick that closed under the max' : ' · a pick that went past the max') : ''}"><b style="color:${color}">${money(x.total)}</b> ${esc(name.slice(0, 52))}<small>${x.kind === 'bin' ? 'BIN' : (x.bids || 0) + ' bid' + (x.bids === 1 ? '' : 's')} · ${esc(clockTime(x.sold_at))}</small></a>`;
     };
@@ -758,7 +758,7 @@ const PANELS = {
       const ms = msLeft(r.end), [label, color] = BOARD[r.state];
       const yours = r.mine ?? r.botMax;
       const off = r.value && yours != null ? Math.round(100 * (1 - (Number(yours) + r.ship) / Number(r.value))) : null;
-      const offColor = off == null ? '' : off >= 50 ? '#69f0ae' : off >= 25 ? '#ffd740' : off >= 0 ? '#bdbdbd' : '#ff8a80';
+      const offColor = off == null ? '' : off >= 50 ? '#2e7d32' : off >= 25 ? '#f9a825' : off >= 0 ? 'var(--secondary-text-color)' : '#e53935';
       const btn = r.state === 'need' ? (r.botMax != null ? copyBtn('Max ' + cents(r.botMax), cents(r.botMax)) : '') + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
         : r.state === 'outbid' && r.win != null && Number(r.win) > r.now ? copyBtn('Win ' + cents(r.win), cents(r.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
         : r.state === 'check' ? linkBtn('Gixen ↗', GIXEN_URL, '#ff6d00') : '';
@@ -814,8 +814,8 @@ const PANELS = {
       return `<g class="dot${p.jackpot ? ' jp' : ''}${on ? ' on' : ''}" role="button" data-do="set" data-key="map_pick" data-value="${esc(on ? '' : p.item_id)}">
         <title>${esc(p.card)} · pay ${money(x)} · goes for ${worth(y)} · ${off >= 0 ? off + '% off' : -off + '% over'}${got ? ' · in Gixen' : ''}</title>
         <circle cx="${cx}" cy="${cy}" r="13" fill="transparent"/>
-        ${on ? `<circle cx="${cx}" cy="${cy}" r="${(r + 7).toFixed(1)}" fill="none" stroke="#fff" stroke-opacity=".7" stroke-width="1.5"/>` : ''}
-        <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="${t[1]}" fill-opacity="${p.unverified ? .35 : .9}" stroke="${on || got ? '#fff' : '#00000088'}" stroke-width="${on ? 3 : got ? 2 : 1}"/>
+        ${on ? `<circle cx="${cx}" cy="${cy}" r="${(r + 7).toFixed(1)}" fill="none" stroke="var(--primary-text-color)" stroke-opacity=".7" stroke-width="1.5"/>` : ''}
+        <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="${t[1]}" fill-opacity="${p.unverified ? .35 : .9}" stroke="${on || got ? 'var(--primary-text-color)' : '#00000088'}" stroke-width="${on ? 3 : got ? 2 : 1}"/>
       </g>`;
     }).join('');
     const half = pts.filter(o => o.y >= 2 * o.x).length, quarter = pts.filter(o => o.y >= 4 * o.x).length;
@@ -830,7 +830,7 @@ const PANELS = {
       <text transform="translate(11 ${((T + H - B) / 2).toFixed(0)}) rotate(-90)" font-size="10" text-anchor="middle" letter-spacing="2">GOES FOR →</text>
       ${dots}
     </svg>
-    <div class="legend" style="margin-top:2px">${Object.entries(TIER).filter(([k]) => k !== 'drop').map(([k, v]) => `<span><span class="dot" style="background:${v[1]}"></span>${v[0]} ${k === 'fire' ? 'Brag' : k === 'green' ? 'Value' : 'Cheap'}</span>`).join('')}<span><span class="dot" style="background:transparent;box-shadow:inset 0 0 0 2px #fff"></span>in Gixen</span><span class="muted">bigger = more deal stars · ${mode === 'max' ? 'auctions at the bot\'s max, Buy It Nows at the asking price' : 'auctions at today\'s bid'}, shipping included</span></div>
+    <div class="legend" style="margin-top:2px">${Object.entries(TIER).filter(([k]) => k !== 'drop').map(([k, v]) => `<span><span class="dot" style="background:${v[1]}"></span>${v[0]} ${k === 'fire' ? 'Brag' : k === 'green' ? 'Value' : 'Cheap'}</span>`).join('')}<span><span class="dot" style="background:transparent;box-shadow:inset 0 0 0 2px var(--primary-text-color)"></span>in Gixen</span><span class="muted">bigger = more deal stars · ${mode === 'max' ? 'auctions at the bot\'s max, Buy It Nows at the asking price' : 'auctions at today\'s bid'}, shipping included</span></div>
     ${chosen ? `<div style="margin-top:6px">${pickLine(chosen, '', '')}</div>` : `<div class="muted" style="font-size:12px;margin-top:8px">Tap a dot to see the pick here.</div>`}`;
   }],
 
@@ -1779,7 +1779,7 @@ const PANELS = {
   steals: ['Steals', true, c => {
     // One list, many cuts: each chip draws one of the older panels.
     const lb = (c.d.lowball || {}).targets, offers = (c.d.offers || []).filter(o => o.value != null);
-    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length],
+    const VIEWS = [['best', 'Best', 'top_deals', steals(c.picks).length], ['map', '🗺️ Map', 'map'],
       ['ending', '⏱ Ending soon', 'ending_list', endingSoon(c).length], ['buy', '⚡ Buy now', 'buy_list', buyNowSteals(c).length],
       ['radar', '🎯 Radar', 'radar', (c.d.radar || []).filter(r => !(c.hiding && c.inGixen(r))).length],
       ['bundles', '📦 Bundles', 'bundles', (c.d.bundles || []).length], ['under', 'Under $20', 'under'],
@@ -2011,7 +2011,7 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { .tape-run { animation: none; } .tape-win { overflow-x: auto; -webkit-mask-image: none; mask-image: none; } }
   /* the board */
   .board { margin-top: 10px; padding: 10px 12px 10px; border-radius: 14px; border: 1px solid var(--divider-color);
-           background: color-mix(in srgb, var(--card-background-color) 72%, #000); }
+           background: color-mix(in srgb, var(--card-background-color) 90%, #000); }
   .bhead { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; margin-bottom: 4px; }
   .bhead .row { margin-top: 0; }
   .brow { display: grid; grid-template-columns: 76px 64px minmax(0, 1fr) 64px 70px 92px 104px auto; gap: 0 10px; align-items: center; }
@@ -2053,7 +2053,7 @@ const STYLE = `
   svg.map, svg.chart { display: block; width: 100%; height: auto; margin-top: 6px; color: var(--secondary-text-color); font-family: inherit; }
   svg.map text, svg.chart text { fill: currentColor; }
   svg.map .dot { cursor: pointer; }
-  svg.map .dot:hover circle:last-child { stroke: #fff; stroke-width: 2.5; }
+  svg.map .dot:hover circle:last-child { stroke: var(--primary-text-color); stroke-width: 2.5; }
   svg.map .dot.jp circle:last-child { animation: dotpulse 1.2s ease-in-out infinite; }
   @keyframes dotpulse { 50% { stroke: #d50000; stroke-width: 5; } }
   @media (prefers-reduced-motion: reduce) { svg.map .dot.jp circle:last-child { animation: none; } }
@@ -2317,7 +2317,6 @@ class SnipeHuntStrategy {
       ]},
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
-        {...section(heading('Steal map', 'mdi:chart-scatter-plot'), panel('map')), column_span: 3},
         {...section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')), column_span: 3},
       ]},
       learn: {title: 'Learn', path: 'learn', icon: 'mdi:school-outline', sections: [
