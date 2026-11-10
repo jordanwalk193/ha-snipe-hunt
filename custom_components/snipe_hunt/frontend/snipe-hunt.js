@@ -1804,6 +1804,15 @@ const PANELS = {
 
   health: ['Bot health', true, c => {
     const a = c.d.status, last = c.d.last_action || {};
+    // the bot's Claude login lapses every few weeks (authcheck.py): say so before it does
+    const loginLine = lg => {
+      if (!lg || lg.token || lg.logged_in == null) return '';
+      if (lg.logged_in === false) return '<span style="color:#e53935">⚠️ The bot\'s Claude login has lapsed: nothing is being scored. Run <code>claude auth login</code> on the bot.</span><br>';
+      if (lg.days_left == null) return '';
+      const days = Math.max(0, Math.round(lg.days_left));
+      if (days <= 7) return '<span style="color:#fb8c00">⚠️ Claude login ends in ' + days + ' day' + (days === 1 ? '' : 's') + '. Run <code>claude auth login</code> on the bot.</span><br>';
+      return 'Claude login good for ' + days + ' days.<br>';
+    };
     const color = {ok: '#43a047', stale: '#fb8c00', failing: '#e53935'}[a.state] || '#546e7a';
     const label = {ok: 'Running', stale: 'No search in 2h+', failing: 'Failing: ' + (a.failing || []).join(', ')}[a.state] || a.state;
     const age = (Date.now() - new Date(c.d.generated)) / 60000;
@@ -1829,7 +1838,8 @@ const PANELS = {
       ${c.s.alerts_enabled === false ? '🔕 Phone alerts are paused.<br>' : ''}
       ${a.sales_based} of ${a.live_picks} live maxes come from real sold prices; the rest are estimates.<br>
       ${a.deep ? (a.deep.on ? 'Market sweep (the standing market, a few pages an hour): ' + esc(a.deep.band) + ', pass ' + (a.deep.passes + 1) + (a.deep.last_pass ? ', last full pass ' + ago(new Date(a.deep.last_pass * 1000).toISOString()) : '') + ', ' + Number(a.deep.found || 0).toLocaleString() + ' listings swept in.<br>' : 'Market sweep off (deep_pages is 0).<br>') : ''}
-      ${a.cost_month != null ? 'Claude: ' + money(a.cost_today) + ' today (' + (a.calls_today || 0) + ' calls), ' + money(a.cost_month) + ' this month.<br>' : ''}
+      ${a.cost_month != null ? 'Claude: ' + money(a.cost_today) + ' today (' + (a.calls_today || 0) + ' calls' + (a.calls_today ? ', ' + money(a.cost_today / a.calls_today) + ' a call' : '') + '), ' + money(a.cost_month) + ' this month.<br>' : ''}
+      ${loginLine(a.claude_login)}
       ${a.held_overnight ? a.held_overnight + ' alerts held for the morning.<br>' : ''}
       ${a.skipped ? a.skipped + ' picks hidden with Skip.<br>' : ''}
       ${c.d.tuning && c.d.tuning.on === false ? 'Self-tuning is switched off.<br>' : ''}
