@@ -148,10 +148,17 @@ const context = (card) => {
   const covered = new Set(all.filter(inGixen).map(p => p.item_id));
   (gixen.snipes || []).forEach(x => covered.add(x.item_id));
   const hiding = store('hide_gixen', 'on') === 'on';
-  const picks = hiding ? all.filter(p => !covered.has(p.item_id)) : all;
+  const unfolded = hiding ? all.filter(p => !covered.has(p.item_id)) : all;
+  // Close to market: a pick that now costs fold_share of its value or more (an
+  // auction bid up, a want-list card) folds into a strip under the steals. A
+  // jackpot never folds. Bots that don't send fold_share fold nothing.
+  const fold = Number(d.fold_share) || 0;
+  const nearMarket = p => fold > 0 && !p.jackpot && (p.share_now ?? shareNow(p)) != null && (p.share_now ?? shareNow(p)) >= fold;
+  const folded = unfolded.filter(nearMarket);
+  const picks = unfolded.filter(p => !nearMarket(p));
   noteSeen(all);
   return {
-    d, s, card, picks, gixen, gixenOn, windowMs,
+    d, s, card, picks, gixen, gixenOn, windowMs, unfolded, folded, fold,
     allPicks: all, covered, hiding, hidden: all.length - picks.length,
     inGixen: x => covered.has(x.item_id),
     gixenOff: d.gixen == null,
@@ -300,6 +307,127 @@ const jackpotBanner = c => {
       </div></div>`;
   }).join('');
 };
+// Picks that crept up to close to market value, out of the way under the steals.
+const foldedStrip = c => {
+  if (!c.folded || !c.folded.length) return '';
+  const n = c.folded.length;
+  return `<details class="folded" style="margin-top:14px;border:1px dashed #8886;border-radius:12px;padding:6px 10px">
+    <summary style="cursor:pointer;font-size:13px" class="muted">🧊 <b>${n}</b> close to market value, folded away: ${n === 1 ? 'it costs' : 'they cost'} ${Math.round(100 * c.fold)}% of value or more now. Tap to look.</summary>
+    <div style="opacity:.75">${c.folded.slice().sort((x, y) => (x.share_now ?? shareNow(x)) - (y.share_now ?? shareNow(y))).map(p => pickLine(p, '', '')).join('')}</div></details>`;
+};
+
+// ---- the takeover: a jackpot fills the whole screen, whatever tab is open.
+// One overlay on the page for every card (they share this module); a "mega"
+// (a $40+ card for a tenth or less) is louder still. "Got it" folds it into a
+// red bar across the top that opens it again; it stays until the listing ends.
+const TAKEOVER_ID = 'snipe-hunt-takeover';
+const liveCards = new Set();
+const shownGone = new Set();
+let takeoverKey = null, takeoverTimer = null, takeoverCtx = null;
+const dismissed = () => { try { return new Set([...JSON.parse(localStorage.getItem('ws_jackpot_seen') || '[]'), ...shownGone]); } catch (e) { return new Set(shownGone); } };
+const setDismissed = (id, on) => {
+  if (on) shownGone.add(id); else shownGone.delete(id);
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem('ws_jackpot_seen') || '[]'); } catch (e) { /* none kept */ }
+  list = list.filter(x => x !== id).concat(on ? [id] : []).slice(-60);
+  try { localStorage.setItem('ws_jackpot_seen', JSON.stringify(list)); } catch (e) { /* not kept past this visit */ }
+};
+const removeTakeover = () => {
+  const el = document.getElementById(TAKEOVER_ID);
+  if (el) el.remove();
+  clearInterval(takeoverTimer);
+  takeoverKey = null;
+};
+const TAKEOVER_CSS = `
+  #${TAKEOVER_ID} .tk-back { position: fixed; inset: 0; z-index: 2147483000; background: rgba(0,0,0,.86); display: flex; align-items: center; justify-content: center; padding: 14px; font-family: var(--paper-font-body1_-_font-family, system-ui, sans-serif); }
+  #${TAKEOVER_ID} .tk { width: min(560px, 100%); max-height: 96vh; overflow: auto; border-radius: 22px; padding: 18px 18px 16px; color: #fff; text-align: center;
+    background: linear-gradient(135deg, #b71c1c, #d50000 45%, #ff1744); box-shadow: 0 0 0 4px #fff3, 0 0 60px 10px #ff174499; animation: tk-pulse 1.2s ease-in-out infinite; }
+  #${TAKEOVER_ID} .tk.mega { background: linear-gradient(120deg, #ff1744, #ff9100, #ffd600, #ff9100, #ff1744); background-size: 300% 300%;
+    animation: tk-pulse 0.9s ease-in-out infinite, tk-shift 3s linear infinite; box-shadow: 0 0 0 6px #fff6, 0 0 90px 24px #ffd600aa; color: #1a0000; }
+  #${TAKEOVER_ID} .tk-head { font-size: clamp(22px, 7vw, 52px); white-space: nowrap; font-weight: 900; letter-spacing: 1px; line-height: 1; text-transform: uppercase; text-shadow: 0 3px 0 #0004; }
+  #${TAKEOVER_ID} .tk-sub { font-size: 13px; font-weight: 800; letter-spacing: 3px; margin: 8px 0 10px; opacity: .9; }
+  #${TAKEOVER_ID} .tk img { max-width: 100%; max-height: 38vh; border-radius: 12px; border: 4px solid #fff; box-shadow: 0 8px 30px #0008; background: #fff; }
+  #${TAKEOVER_ID} .tk-card { font-size: 17px; font-weight: 700; margin: 10px 0 4px; }
+  #${TAKEOVER_ID} .tk-pay { font-size: clamp(44px, 14vw, 76px); font-weight: 900; line-height: 1; }
+  #${TAKEOVER_ID} .tk-for { font-size: 20px; font-weight: 700; margin-top: 2px; }
+  #${TAKEOVER_ID} .tk-off { display: inline-block; margin: 10px 0 4px; padding: 6px 16px; border-radius: 999px; background: #fff; color: #d50000; font-size: 24px; font-weight: 900; }
+  #${TAKEOVER_ID} .tk-note { font-size: 13px; margin-top: 6px; opacity: .95; }
+  #${TAKEOVER_ID} .tk-clock { font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; margin-top: 6px; }
+  #${TAKEOVER_ID} .tk-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  #${TAKEOVER_ID} .tk-btn { cursor: pointer; border: 0; border-radius: 12px; padding: 14px 18px; font-size: 17px; font-weight: 900; background: #fff; color: #b71c1c; text-decoration: none; }
+  #${TAKEOVER_ID} .tk-btn.big { flex: 1 1 100%; font-size: 22px; padding: 18px; }
+  #${TAKEOVER_ID} .tk-btn.ghost { background: #0003; color: inherit; font-weight: 700; font-size: 14px; padding: 10px 14px; }
+  #${TAKEOVER_ID} .tk-bar { position: fixed; left: 0; right: 0; top: 0; z-index: 2147483000; cursor: pointer; text-align: center; padding: 10px 12px; color: #fff; font: 800 15px system-ui, sans-serif;
+    background: linear-gradient(90deg, #d50000, #ff1744, #d50000); background-size: 200% 100%; animation: tk-shift 2s linear infinite; box-shadow: 0 4px 18px #d5000088; }
+  @keyframes tk-pulse { 50% { transform: scale(1.015); } }
+  @keyframes tk-shift { to { background-position: 300% 0; } }
+  @media (prefers-reduced-motion: reduce) { #${TAKEOVER_ID} .tk, #${TAKEOVER_ID} .tk-bar { animation: none; } }`;
+const takeoverHtml = (p, n, i) => {
+  const mega = p.jackpot_level === 'mega';
+  const pay = jackpotPay(p), off = p.value ? Math.round(100 * (1 - pay / p.value)) : null;
+  const how = p.jackpot_bin ? 'BUY IT NOW ON AN AUCTION · GONE AT THE FIRST BID' : p.is_auction ? 'AUCTION · ENDING SOON' : 'BUY IT NOW · GONE IN MINUTES';
+  const img = p.image ? `<a href="${esc(p.url)}" data-tk="open" data-v="${esc(p.url)}"><img src="${esc(String(p.image).replace('s-l225', 's-l800').replace('s-l500', 's-l800'))}" alt=""></a>` : '';
+  const notes = [p.jackpot === 'sales' || p.ledger_only ? `Value from ${p.comps ? p.comps + ' ' : ''}recorded sales.` : "Value is the bot's estimate: glance at the comps.",
+    p.ledger_only ? 'Found by the price ledger, not scored by Claude: check the photos and the seller.' : '',
+    p.owned ? 'You already have this card: grab it to flip or trade.' : ''].filter(Boolean).map(t => `<div class="tk-note">${esc(t)}</div>`).join('');
+  const act = p.is_auction && !p.jackpot_bin
+    ? `<span class="tk-btn big" data-tk="copy" data-v="${esc(p.item_id)}">Copy item # ${esc(p.item_id)}</span>` +
+      (p.max != null ? `<span class="tk-btn" data-tk="copy" data-v="${esc(cents(p.max))}">Copy max ${esc(cents(p.max))}</span>` : '') +
+      `<span class="tk-btn" data-tk="open" data-v="${esc(GIXEN_URL)}">Gixen ↗</span><span class="tk-btn" data-tk="open" data-v="${esc(p.url)}">eBay ↗</span>`
+    : `<span class="tk-btn big" data-tk="open" data-v="${esc(p.url)}">${p.best_offer ? 'BUY IT NOW (has offers) ↗' : 'BUY IT NOW ↗'}</span>`;
+  return `<div class="tk-back"><div class="tk${mega ? ' mega' : ''}" role="alertdialog" aria-label="Jackpot">
+    <div class="tk-head">${mega ? '🚨 HOLY SH*T 🚨' : '🚨 JACKPOT 🚨'}</div>
+    <div class="tk-sub">${how}${n > 1 ? ` · ${i + 1} OF ${n}` : ''}</div>
+    ${img}
+    <div class="tk-card">${esc(p.card || p.title || '')}</div>
+    <div class="tk-pay">${money(pay)}</div>
+    <div class="tk-for">delivered, for a ${worth(p.value)} card</div>
+    ${off != null ? `<div class="tk-off">${off}% OFF</div>` : ''}
+    ${p.is_auction && p.end_time ? `<div class="tk-clock">ends <span data-tk-end="${esc(p.end_time)}">${left(p.end_time)}</span></div>` : ''}
+    ${notes}
+    <div class="tk-btns">${act}</div>
+    <div class="tk-btns"><span class="tk-btn ghost" data-tk="seen" data-v="${esc(p.item_id)}">Got it</span>${n > 1 ? `<span class="tk-btn ghost" data-tk="next">Next jackpot →</span>` : ''}</div>
+  </div></div>`;
+};
+let takeoverIndex = 0;
+const takeover = c => {
+  takeoverCtx = c;
+  const live = (c.d.jackpots || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
+  if (!live.length) { removeTakeover(); return; }
+  const gone = dismissed();
+  const open = live.filter(p => !gone.has(p.item_id));
+  const key = live.map(p => p.item_id + ':' + jackpotPay(p) + (gone.has(p.item_id) ? ':seen' : '')).join('|') + '#' + takeoverIndex;
+  if (key === takeoverKey && document.getElementById(TAKEOVER_ID)) return;
+  removeTakeover();
+  takeoverKey = key;
+  const el = document.createElement('div');
+  el.id = TAKEOVER_ID;
+  const top = live[0];
+  const bar = `<div class="tk-bar" data-tk="reopen">🚨 ${top.jackpot_level === 'mega' ? 'HOLY SH*T' : 'JACKPOT'} LIVE: ${money(jackpotPay(top))} for a ${worth(top.value)} card${live.length > 1 ? ` · +${live.length - 1} more` : ''} · tap to open</div>`;
+  if (takeoverIndex >= open.length) takeoverIndex = 0;
+  el.innerHTML = `<style>${TAKEOVER_CSS}</style>` + (open.length ? takeoverHtml(open[takeoverIndex], open.length, takeoverIndex) : bar);
+  el.addEventListener('click', ev => {
+    const t = ev.target.closest('[data-tk]');
+    if (!t) return;
+    ev.preventDefault();
+    const what = t.dataset.tk;
+    if (what === 'open') window.open(t.dataset.v, '_blank', 'noopener');
+    else if (what === 'copy') {
+      const done = () => { t.textContent = 'Copied ✓'; };
+      if (navigator.clipboard) navigator.clipboard.writeText(t.dataset.v).then(done, done); else done();
+    } else if (what === 'seen') { setDismissed(t.dataset.v, true); takeoverKey = null; takeover(takeoverCtx); }
+    else if (what === 'next') { takeoverIndex += 1; takeoverKey = null; takeover(takeoverCtx); }
+    else if (what === 'reopen') { live.forEach(p => setDismissed(p.item_id, false)); takeoverIndex = 0; takeoverKey = null; takeover(takeoverCtx); }
+  });
+  document.body.appendChild(el);
+  if (open.length && navigator.vibrate) try { navigator.vibrate([300, 120, 300, 120, 600]); } catch (e) { /* no buzz */ }
+  takeoverTimer = setInterval(() => {
+    el.querySelectorAll('[data-tk-end]').forEach(x => {
+      if (msLeft(x.dataset.tkEnd) <= 0) { takeoverKey = null; takeover(takeoverCtx); } else x.textContent = left(x.dataset.tkEnd);
+    });
+  }, 1000);
+};
+
 // Auctions ending within the hour at 10% of their value or less (the bot's bidnow.py).
 const bidNowList = c => {
   const live = (c.d.bid_now || []).filter(p => p.end_time && msLeft(p.end_time) > 0 && !(c.hiding && c.inGixen(p)));
@@ -1438,7 +1566,7 @@ const PANELS = {
 
   all_picks: ['Every live pick', true, c => {
     const tier = store('tier', 'all'), kind = store('kind', 'all'), cover = store('cover', 'all'), sort = store('sort', 'best'), limit = store('limit', 'page');
-    let picks = (cover === 'sniped' ? c.allPicks : c.picks).slice();
+    let picks = (cover === 'sniped' ? c.allPicks : c.unfolded).slice();   // every pick, close to market too
     const total = c.allPicks.length;
     const edges = picks.filter(p => EDGE[p.edge]).length, why = store('why', 'all'), label = store('label', 'all');
     const labelCount = l => picks.filter(p => (p.labels || []).includes(l)).length;
@@ -1791,7 +1919,7 @@ const PANELS = {
     const chip = gixenChip(c);
     return `<div style="padding-top:10px"><input data-search type="search" placeholder="Filter ${c.picks.length} picks: set, parallel, seller, year, item #…" value="${esc(c.card.query)}"></div>` +
       jackpotBanner(c) + bidNowList(c) + droppedList(c) + chips('steal_view', 'best', VIEWS.map(([key, label, , n]) => [key, label + (n ? ' ' + n : '')]), chosen[0]) +
-      (chip ? `<div class="row" style="margin-top:2px">${chip}</div>` : '') + PANELS[chosen[2]][2](c);
+      (chip ? `<div class="row" style="margin-top:2px">${chip}</div>` : '') + PANELS[chosen[2]][2](c) + foldedStrip(c);
   }],
 
   incoming: ['Incoming', false, c => PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
@@ -2123,6 +2251,7 @@ class SnipeHuntCard extends HTMLElement {
   connectedCallback() {
     if (!this.feed) this.feed = feedFor(this.config && this.config.entry);
     this.feed.cards.add(this);
+    liveCards.add(this);
     if (this._hass) this.feed.start(this._hass);
     clearInterval(this.timer);
     this.timer = setInterval(() => { if (this.config && PANELS[this.config.panel][1]) this.draw(); }, 30000);
@@ -2133,6 +2262,8 @@ class SnipeHuntCard extends HTMLElement {
 
   disconnectedCallback() {
     this.feed.cards.delete(this);
+    liveCards.delete(this);
+    if (!liveCards.size) removeTakeover();   // left the dashboard
     clearInterval(this.timer);
     clearInterval(this.ticker);
   }
@@ -2171,7 +2302,11 @@ class SnipeHuntCard extends HTMLElement {
     const caret = search ? [search.selectionStart, search.selectionEnd] : null;
     let html;
     try {
-      html = PANELS[this.config.panel][2](context(this));
+      const ctx = context(this);
+      if (this.config.takeover !== false && (this.feed.options || {}).takeover !== false) {
+        try { takeover(ctx); } catch (e) { /* the panel still draws */ }
+      }
+      html = PANELS[this.config.panel][2](ctx);
     } catch (err) {
       html = empty('This panel hit an error: ' + esc(err.message));
     }
