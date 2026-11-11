@@ -801,6 +801,31 @@ const boardRows = c => {
 const mapPay = (p, mode) => (p.is_auction ? (mode === 'now' || p.max == null ? Number(p.bid_now ?? p.price) : Number(p.max)) : Number(p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
 // A chart's drawing width: the card's own, so its text is drawn 1:1 (the next redraw follows a resize).
 const cardWidth = c => Math.max(300, Math.min(1200, (c.card.offsetWidth || c.card.clientWidth || 628))) - 28;
+// One series over dates: pts = [{d: 'YYYY-MM-DD', y, bar?, tip?}]. `ref` draws a dashed level (the
+// index's 100), `fmt` writes the y labels, bars (when given) sit along the bottom.
+const lineChart = (c, pts, {color, fmt = v => String(Math.round(v)), ref = null, bars = false, h = 220} = {}) => {
+  pts = pts.filter(p => p.y != null);
+  if (pts.length < 2) return empty('Not enough points yet.');
+  const W = cardWidth(c), H = h, L = 46, R = 14, T = 14, B = 26, BARS = bars ? 34 : 0;
+  const ys = pts.map(p => p.y).concat(ref != null ? [ref] : []);
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
+  const X = i => L + i / (pts.length - 1) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B - BARS);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+  const area = line + ` L${X(pts.length - 1).toFixed(1)},${(H - B - BARS).toFixed(1)} L${L},${(H - B - BARS).toFixed(1)} Z`;
+  const col = color || c.accent;
+  const rules = [0, .5, 1].map(f => { const v = lo + f * (hi - lo);
+    return `<line x1="${L}" x2="${W - R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="currentColor" stroke-opacity=".1"/><text x="${L - 6}" y="${(Y(v) + 3.5).toFixed(1)}" font-size="10" text-anchor="end" fill="currentColor" fill-opacity=".6">${esc(fmt(v))}</text>`; }).join('');
+  const refLine = ref != null ? `<line x1="${L}" x2="${W - R}" y1="${Y(ref).toFixed(1)}" y2="${Y(ref).toFixed(1)}" stroke="currentColor" stroke-opacity=".45" stroke-dasharray="4 4"/>` : '';
+  const maxBar = Math.max(1, ...pts.map(p => p.bar || 0)), bw = Math.max(2, Math.min(16, (W - L - R) / pts.length - 3));
+  const barSvg = bars ? pts.map((p, i) => p.bar ? `<rect x="${(X(i) - bw / 2).toFixed(1)}" y="${(H - B - p.bar / maxBar * (BARS - 6)).toFixed(1)}" width="${bw.toFixed(1)}" height="${(p.bar / maxBar * (BARS - 6)).toFixed(1)}" rx="2" fill="currentColor" fill-opacity=".25"/>` : '').join('') : '';
+  const lab = d => new Date(d + 'T12:00').toLocaleDateString([], {month: 'short', day: 'numeric'});
+  const ticks = [0, Math.floor((pts.length - 1) / 2), pts.length - 1].map(i => `<text x="${X(i).toFixed(1)}" y="${H - 6}" font-size="10" text-anchor="${i === 0 ? 'start' : i === pts.length - 1 ? 'end' : 'middle'}" fill="currentColor" fill-opacity=".6">${lab(pts[i].d)}</text>`).join('');
+  const dots = pts.map((p, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="${pts.length > 40 ? 6 : 3.5}" fill="${pts.length > 40 ? 'transparent' : col}"><title>${esc(p.tip || lab(p.d) + ': ' + fmt(p.y))}</title></circle>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:block;max-width:100%;margin:6px 0">${rules}${refLine}${barSvg}
+    <path d="${area}" fill="${col}" fill-opacity=".12"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"/>${dots}${ticks}</svg>`;
+};
 const clockTime = iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 const dayWord = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], {weekday: 'short'}); };
 
@@ -1325,7 +1350,9 @@ const PANELS = {
     const g = c.d.learn;
     if (!g) return empty('Update the bot to see this: it needs a version with the card guide (guide.md).');
     const md = t => esc(t).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-    const tabs = g.sections.map((s, i) => ['s' + i, esc(s.title)]).concat([['live', '📈 Live numbers'], ['quiz', '🧠 Quiz']]);
+    const tabs = g.sections.map((s, i) => ['s' + i, esc(s.title)]).concat([['live', '📈 Live numbers'],
+      ...(g.colors ? [['colors', '🎨 Colors']] : []), ...(c.d.topps_now ? [['now', '📰 Topps Now']] : []),
+      ...(g.trivia ? [['trivia', '🎲 Trivia']] : []), ['quiz', '🧠 Quiz']]);
     const pick = store('learn_tab', 's0'), tab = tabs.some(t => t[0] === pick) ? pick : 's0';
     let body;
     if (tab === 'live') {
@@ -1337,6 +1364,34 @@ const PANELS = {
         cap('WHAT ELSE ADDS VALUE') + g.premiums.map(p => `<div class="line" style="padding:7px 0;font-size:13px;display:flex;justify-content:space-between;gap:10px"><span><b>${esc(p.what)}</b><br><span class="muted" style="font-size:12px">vs ${esc(p.vs)} · ${p.with.n} and ${p.without.n} sales</span></span><span style="flex:none;text-align:right">${p.enough ? `<b style="font-size:16px">${p.x}×</b><br><span class="muted" style="font-size:12px">${money(p.with.median)} vs ${money(p.without.median)}</span>` : '<span class="muted">not enough<br>sales yet</span>'}</span></div>`).join('') +
         cap('TYPICAL SALE BY PRODUCT') + (() => { const ps = g.products.slice(0, 14), m = Math.max(1, ...ps.map(p => p.median));
           return ps.map(p => hbar(esc(p.family), p.median, m, c.accent, `${money(p.median)} · ${p.n}`)).join(''); })();
+    } else if (tab === 'colors') {
+      const rows = g.colors.filter(r => r.enough), top = Math.max(1, ...rows.map(r => r.median));
+      body = `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">What each color sells for on his raw, non-auto Chrome-type cards (delivered), and the print runs it actually came with. One color, several runs: read the number, not the color.</div>` +
+        rows.map(r => `<div class="line" style="padding:6px 0;font-size:13px">
+          <div style="display:flex;justify-content:space-between;gap:8px"><span><b>${esc(r.color)}</b> <span class="muted" style="font-size:12px">· ${r.n} sales · ${r.numbered_pct}% numbered</span></span><b>${money(r.median)}</b></div>
+          <div class="bar" style="margin-top:3px"><div style="width:${Math.max(2, Math.round(r.median / top * 100))}%;background:${c.accent}"></div></div>
+          <div style="margin-top:4px">${r.runs.map(x => `<span class="chip" style="font-size:11px;padding:1px 7px;margin:0 4px 0 0;display:inline-block;border-radius:99px;background:#8882">${esc(x.run)} · ${x.n}</span>`).join('')}</div></div>`).join('') +
+        `<div class="muted" style="font-size:12px;margin-top:6px">Colors with fewer than three sales are left out. The ladders behind these are in "Color ladders by product".</div>`;
+    } else if (tab === 'now') {
+      const lib = c.d.topps_now || [], own = lib.filter(r => r.n_owned).length;
+      body = `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5">Every Topps Now card of his the bot knows (toppsnow.md plus the sales ledger). Each was sold for about 24 hours after the moment it celebrates; the print run is how many were ordered. You own <b>${own}</b> of ${lib.length}.</div>` +
+        lib.map(r => {
+          const par = (r.parallels || []).length > 1 ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:12px">${r.parallels.length} versions</summary>${r.parallels.map(p => `<div style="font-size:12px;display:flex;justify-content:space-between;gap:8px;padding:2px 0"><span>${p[4] ? '✅ ' : ''}${esc(p[0])}</span><span class="muted">${p[2] != null ? money(p[2]) + ' · ' + p[3] + ' sold' : 'no sales yet'}</span></div>`).join('')}</details>` : '';
+          return `<div class="line" style="display:flex;gap:10px;padding:8px 0">
+            ${r.image ? `<img src="${esc(r.image)}" loading="lazy" style="width:46px;height:64px;object-fit:cover;border-radius:4px;flex:none">` : '<div style="width:46px;height:64px;border-radius:4px;background:#8882;flex:none"></div>'}
+            <div style="flex:1;min-width:0"><div style="font-size:14px"><b>${esc(r.year)} #${esc(r.no)}</b> ${r.n_owned ? pill('✅ Owned', '#2e7d32') : ''}</div>
+              <div style="font-size:13px">${esc(r.event && r.event !== 'unconfirmed' ? r.event : (r.title || 'Event not confirmed yet'))}</div>
+              <div class="muted" style="font-size:12px">${r.date && r.date !== '—' ? esc(r.date) + ' · ' : ''}${r.print_run && r.print_run !== 'unconfirmed' ? '<b>' + esc(r.print_run) + '</b> printed' : 'print run unconfirmed'}${r.median != null ? ' · goes for ' + money(r.median) : ''}${r.sales ? ' · ' + r.sales + ' sold' : ''}${r.live != null ? ' · live from ' + money(r.live) : ''}</div>${par}</div></div>`;
+        }).join('');
+    } else if (tab === 'trivia') {
+      const h = g.history || {}, sc = h.scanned || [], pr = h.prices || [];
+      body = `<div class="trivia" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin:10px 0">` +
+        g.trivia.map(t => `<div style="border:1px solid #8884;border-radius:12px;padding:10px"><div style="font-size:22px;font-weight:800">${esc(t.value)}</div><div style="font-size:12px;font-weight:600">${esc(t.label)}</div>${t.note ? `<div class="muted" style="font-size:11px;margin-top:3px;line-height:1.3">${esc(t.note)}</div>` : ''}</div>`).join('') + `</div>` +
+        cap('WALKER LISTINGS FOUND, RUNNING TOTAL') + lineChart(c, sc.map(d => ({d: d.day, y: d.total, bar: d.new, tip: `${d.day}: ${d.new.toLocaleString()} new, ${d.total.toLocaleString()} in all`})), {bars: true, fmt: v => v >= 1000 ? Math.round(v / 1000) + 'k' : String(Math.round(v))}) +
+        `<div class="muted" style="font-size:12px">Bars are new listings found each day. The jump at the end of October is the market sweep going live: it reads every listing up, not just the newest.</div>` +
+        cap('WALKER MARKET INDEX, WEEK BY WEEK') + lineChart(c, pr.map(w => ({d: w.week, y: w.index, bar: w.n, tip: `Week of ${w.week}: index ${w.index} · ${w.n} sales · median ${money(w.median)}`})), {ref: 100, bars: true, color: '#43a047'}) +
+        `<div class="muted" style="font-size:12px;line-height:1.5">100 is a normal week. Each sale is compared with the same card's sales in other weeks, so a week of pricey autos doesn't read as a rally: 120 means cards sold 20% over their usual. Bars are sales per week (weeks under 10 sales are left out).</div>` +
+        cap('MEDIAN SALE, WEEK BY WEEK') + lineChart(c, pr.map(w => ({d: w.week, y: w.median, tip: `Week of ${w.week}: median ${money(w.median)} over ${w.n} sales`})), {fmt: v => '$' + v.toFixed(0), h: 170});
     } else if (tab === 'quiz') {
       body = `<div class="muted" style="font-size:12px;margin:8px 0 4px">Tap a question to see the answer.</div>` +
         g.quiz.map((q, i) => `<details class="line" style="padding:9px 0;font-size:14px"><summary style="cursor:pointer;font-weight:600">${i + 1}. ${md(q.q)}</summary><div style="margin-top:6px;line-height:1.5">${md(q.a)}</div></details>`).join('');
@@ -1347,6 +1402,50 @@ const PANELS = {
         : `<p style="margin:6px 0;line-height:1.55;font-size:14px">${md(b.p)}</p>`).join('');
     }
     return `<div style="padding-top:8px"></div>` + chips('learn_tab', 's0', tabs, tab) + body;
+  }],
+
+  catalog: ['Every Walker card', false, c => {
+    // Every card the market has seen (and every card you own), one row per card with its
+    // parallels folded under it. Built hourly by the bot (catalog.py).
+    const cat = c.d.catalog;
+    if (!cat) return empty('Update the bot to see this: it needs a version with the card catalog.');
+    const show = store('cat_show', 'all'), fam = store('cat_family', 'all'), yr = store('cat_year', 'all'), flat = store('cat_flat', 'cards');
+    let cards = cat.cards;
+    if (fam !== 'all') cards = cards.filter(x => x.f === fam);
+    if (yr !== 'all') cards = cards.filter(x => x.y === yr);
+    if (show === 'owned') cards = cards.filter(x => x.p.some(p => p[4]));
+    if (show === 'missing') cards = cards.filter(x => x.p.some(p => !p[4]));
+    if (show === 'live') cards = cards.filter(x => x.p.some(p => p[5] != null));
+    const famOpts = [['all', 'All products']].concat(cat.families.map(f => [f, f]));
+    const yrOpts = [['all', 'All years']].concat(cat.years.filter(y => /^\d{4}$/.test(y)).map(y => [y, y]));
+    const sel = (key, val, opts) => `<select data-do="set" data-key="${key}" style="margin:0 6px 6px 0">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    const pRow = (x, p) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:13px">
+      <span>${p[4] ? '✅ ' : '<span class="muted">○ </span>'}${esc(p[0])}</span>
+      <span class="muted" style="text-align:right;white-space:nowrap">${p[2] != null ? money(p[2]) + ' · ' + p[3] + ' sold' : 'no sales yet'}${p[5] != null ? ` · <a href="https://www.ebay.com/itm/${esc(p[6])}" target="_blank" rel="noopener">live ${money(p[5])}</a>` : ''}</span></div>`;
+    const head = `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5"><b>${cat.n_cards.toLocaleString()}</b> cards and <b>${cat.n_parallels.toLocaleString()}</b> card-and-parallel versions the market has seen or you own; you have <b>${cat.n_owned}</b>. Prices are typical sales, delivered.</div>
+      <div style="padding-top:2px"><input data-search type="search" placeholder="Filter: set, number, parallel…" value="${esc(c.card.query)}"></div>
+      <div style="margin-top:6px">${sel('cat_family', fam, famOpts)}${sel('cat_year', yr, yrOpts)}</div>` +
+      chips('cat_show', 'all', [['all', 'All'], ['owned', '✅ Have'], ['missing', '○ Missing'], ['live', '🛒 For sale now']], show) +
+      chips('cat_flat', 'cards', [['cards', 'One row per card'], ['all', 'Every parallel']], flat) +
+      `<div class="muted" style="font-size:12px;margin:2px 0 6px"><span data-found>${cards.length}</span> shown</div>`;
+    if (!cards.length) return head + empty('Nothing matches.');
+    const limit = 250;
+    if (flat === 'all') {
+      const rows = cards.flatMap(x => x.p.map(p => [x, p])).slice(0, limit * 3);
+      return head + rows.map(([x, p]) => `<div class="line" data-find="${esc((x.y + ' ' + x.f + ' ' + (x.no || '') + ' ' + x.t + ' ' + p[0]).toLowerCase())}" style="display:flex;flex-direction:column;padding:4px 0">
+        <div style="font-size:12px" class="muted">${esc(x.y)} ${esc(x.f)}${x.no ? ' #' + esc(x.no) : ''}</div>${pRow(x, p)}</div>`).join('');
+    }
+    return head + cards.slice(0, limit).map(x => {
+      const meds = x.p.map(p => p[2]).filter(v => v != null), lives = x.p.map(p => p[5]).filter(v => v != null);
+      const have = x.p.filter(p => p[4]).length;
+      return `<details class="line" data-find="${esc((x.y + ' ' + x.f + ' ' + (x.no || '') + ' ' + x.t + ' ' + x.p.map(p => p[0]).join(' ')).toLowerCase())}" style="display:flex;flex-direction:column;padding:6px 0">
+        <summary style="cursor:pointer;display:flex;gap:10px;align-items:center">
+          ${x.img ? `<img src="${esc(x.img)}" loading="lazy" style="width:38px;height:52px;object-fit:cover;border-radius:4px;flex:none">` : '<div style="width:38px;height:52px;border-radius:4px;background:#8882;flex:none"></div>'}
+          <span style="flex:1;min-width:0"><b>${esc(x.y)} ${esc(x.f)}${x.no ? ' #' + esc(x.no) : ''}</b>
+            <span class="muted" style="display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.t)}</span>
+            <span style="font-size:12px">${x.p.length} version${x.p.length === 1 ? '' : 's'} · ${have ? `<b style="color:#43a047">${have} owned</b>` : 'none owned'}${meds.length ? ' · ' + money(Math.min(...meds)) + (meds.length > 1 ? '–' + money(Math.max(...meds)) : '') : ''}${lives.length ? ' · 🛒 from ' + money(Math.min(...lives)) : ''}</span></span>
+        </summary><div style="padding:4px 0 2px 48px">${x.p.map(p => pRow(x, p)).join('')}</div></details>`;
+    }).join('') + (cards.length > limit ? empty(`${cards.length - limit} more: narrow it with a product or year.`) : '');
   }],
 
   rarest: ['Rarest on eBay', false, c => {
@@ -2210,6 +2309,10 @@ class SnipeHuntCard extends HTMLElement {
     this.body = this.shadowRoot.getElementById('body');
     this.query = '';
     this.shadowRoot.addEventListener('click', ev => this.clicked(ev));
+    this.shadowRoot.addEventListener('change', ev => {   // a <select data-do="set"> chooses like a chip
+      const el = ev.target;
+      if (el.matches('select[data-do="set"]')) { scope = this.feed.entry || ''; remember(el.dataset.key, el.value); this.feed.redraw(); }
+    });
     this.shadowRoot.addEventListener('input', ev => {
       if (ev.target.matches('input[data-search]')) this.find(ev.target);
       if (ev.target.matches('input[data-fb-note]')) fb.note = ev.target.value;
@@ -2350,6 +2453,7 @@ class SnipeHuntCard extends HTMLElement {
       return;
     }
     const el = ev.target.closest('[data-do]');
+    if (el && el.tagName === 'SELECT') return;   // its change event chooses (see the constructor)
     if (!el) return;
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
@@ -2466,6 +2570,9 @@ class SnipeHuntStrategy {
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
         {...section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')), column_span: 3},
       ]},
+      catalog: {title: 'Catalog', path: 'catalog', icon: 'mdi:book-open-variant', sections: [
+        {...section(heading('Every Walker card', 'mdi:book-open-variant'), panel('catalog')), column_span: 3},
+      ]},
       learn: {title: 'Learn', path: 'learn', icon: 'mdi:school-outline', sections: [
         {...section(heading('Walker card school', 'mdi:school-outline'), panel('learn')), column_span: 2},
         section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')),
@@ -2511,6 +2618,7 @@ class SnipeHuntStrategy {
       : [...new Set(asked.map(t => OLD[t] || t))];
     // Learn came after the tabs option: it shows even when saved tabs predate it.
     if (!upgraded.includes('learn')) upgraded.push('learn');
+    if (!upgraded.includes('catalog')) upgraded.push('catalog');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
