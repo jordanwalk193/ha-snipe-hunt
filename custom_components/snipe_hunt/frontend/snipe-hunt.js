@@ -288,6 +288,8 @@ const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // A jackpot (the bot's jackpot.py): a $20+ card for a sliver of its value. It gets
 // the loudest thing on the dashboard, because it won't be there for long.
 const jackpotPill = p => p.jackpot ? pill('🚨 JACKPOT', '#d50000') + ' ' : '';
+// An auction of a $50+ card (the bot's long_shot_value): the bot's max almost never wins there.
+const longShotPill = p => p.long_shot ? `<span title="Cards this dear rarely go for the bot's max: worth a snipe, not a sure thing.">${pill('🎲 Long shot', '#8e24aa')}</span> ` : '';
 const jackpotPay = p => Number(p.jackpot_bin && p.bin_price ? p.bin_price : (p.bid_now ?? p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
 const jackpotBanner = c => {
   const live = (c.d.jackpots || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
@@ -533,7 +535,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
