@@ -1251,8 +1251,9 @@ const PANELS = {
       : 'No 🔥 or 🟢 picks are live right now. New ones land here within the hour.');
     const t = TIER[p.tier] || ['•', '#546e7a'];
     const gap = room(p);
-    return `<div data-row style="display:flex;gap:16px;align-items:center;margin-top:10px;padding:14px;border-radius:16px;background:linear-gradient(135deg,${t[1]}55,transparent);border:1px solid ${t[1]}">
-      ${p.image ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none;max-width:36%"><img src="${esc(p.image.replace('s-l225', 's-l500'))}" style="max-height:150px;max-width:100%;border-radius:8px;display:block"></a>` : ''}
+    // a narrow column stacks the picture over the text, big (container query in STYLE)
+    return `<div class="tp-wrap"><div data-row class="toppick" style="background:linear-gradient(135deg,${t[1]}55,transparent);border:1px solid ${t[1]}">
+      ${p.image ? `<a class="tp-img" href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(String(p.image).replace(/s-l\d+/, 's-l800'))}" alt=""></a>` : ''}
       <div style="flex:1;min-width:0">
         <div class="muted" style="font-size:11px;letter-spacing:2px">TOP PICK · ${p.is_auction ? 'AUCTION' : 'BUY IT NOW'}</div>
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener" style="display:block;font-size:19px;font-weight:700;margin:4px 0;line-height:1.2">${t[0]} ${esc(p.card)}</a>
@@ -1266,7 +1267,7 @@ const PANELS = {
         ${story(p)}
         <div class="muted" style="font-size:12px;margin-top:4px">${sellerTxt(p)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
-      </div></div>`;
+      </div></div></div>`;
   }],
 
   radar: ['Steal radar', true, c => {
@@ -2404,6 +2405,15 @@ const STYLE = `
   .pod-medal { display: block; font-size: 24px; line-height: 1.1; }
   .pod-gold .pod-step { padding-top: 22px; padding-bottom: 22px; }
   .pod-silver .pod-step { padding-top: 12px; padding-bottom: 12px; }
+  .tp-wrap { container-type: inline-size; }
+  .toppick { display: flex; gap: 16px; align-items: center; margin-top: 10px; padding: 14px; border-radius: 16px; }
+  .tp-img { flex: none; max-width: 36%; }
+  .tp-img img { max-height: 220px; max-width: 100%; border-radius: 10px; display: block; box-shadow: 0 6px 18px #0005; }
+  @container (max-width: 520px) {
+    .toppick { flex-direction: column; align-items: stretch; }
+    .tp-img { max-width: none; align-self: center; }
+    .tp-img img { max-height: 300px; }
+  }
   .jewels-cap { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--secondary-text-color); margin: 4px 0 8px; }
   .jewels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
   .jewel { position: relative; cursor: pointer; border-radius: 14px; padding: 8px; background: linear-gradient(160deg, #ffd54f33, #ff6f0022 40%, #7c4dff22);
