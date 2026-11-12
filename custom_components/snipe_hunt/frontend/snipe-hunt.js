@@ -1697,22 +1697,56 @@ const PANELS = {
       }).join('');
   }],
 
-  offers: ['Make an offer', false, c => {
-    // Buy It Nows that have sat a month or more with Best Offer on (the bot's offers.py).
-    // The bot only suggests an amount; you send the offer yourself on eBay.
+  offers: ['Lowball offers', false, c => {
+    // Buy It Nows that have sat two weeks or more with Best Offer on (the bot's offers.py
+    // ladder): an aggressive opener that drops the longer a listing sits, the most to
+    // accept if the seller counters, and why it went that low. You send every offer yourself.
     const all = c.d.offers;
     if (!all) return empty('Update the bot to see this: it needs a version that looks for stale listings.');
-    const priced = all.filter(o => o.value != null), top = (priced.length ? priced : all).slice(0, Number(c.card.config.count) || 10);
-    if (!top.length) return empty('No Buy It Now has sat a month with Best Offer on, on a card you don\'t own.');
-    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Up a month or more and taking offers: sellers who haven't sold often take well under the asking price. Offers are about 70% of the price, never more than 80% of what the card goes for, and never under half the price (those get declined). You send the offer on eBay.${priced.length < all.length ? ` ${all.length - priced.length} more are waiting for a going rate.` : ''}</div>` +
-      top.map(o => `<div class="line" style="display:flex;gap:12px;align-items:flex-start;padding:10px 0">
-        ${thumb(o, 54, 74)}
-        <div style="flex:1;min-width:0">
-          <a class="title" href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.title)}</a>
-          <div style="font-size:13px;margin-top:3px">${pill('Offer ' + cents(o.offer), '#2e7d32')} asks ${money(o.price)} + ${shipTxt(o)}${o.value != null ? ` · goes for about <b>${money(o.value)}</b> <span class="muted">(${o.basis === 'sales' || o.basis === 'sold' ? 'sales' : 'estimate'})</span>` : ' · <span class="muted">no going rate yet</span>'}</div>
-          <div class="muted" style="font-size:12px;margin-top:2px">${o.must_have ? '⭐ Must-have: ' + esc(o.must_have) + ' · ' : ''}listed ${o.days} days ago · ${esc(o.seller)}</div>
-          <div class="row tight">${linkBtn('Make offer ↗', o.url, '#1e88e5')}${copyBtn('Copy ' + cents(o.offer), cents(o.offer))}</div>
-        </div></div>`).join('');
+    if (!all.length) return empty('No Buy It Now has sat two weeks with Best Offer on, on a card you don\'t own.');
+    const view = store('offer_view', 'best');
+    let list = all.slice();
+    if (view === 'stale') list = list.filter(o => o.days >= 60);
+    if (view === 'shots') list = list.filter(o => o.long_shot);
+    if (view === 'best') list = list.filter(o => !o.long_shot);
+    const bySeller = {};
+    all.forEach(o => (bySeller[o.seller || '?'] = bySeller[o.seller || '?'] || []).push(o));
+    const bundles = Object.entries(bySeller).filter(([, l]) => l.length > 1).sort((x, y) => y[1].length - x[1].length);
+    const saved = all.filter(o => !o.long_shot).reduce((t, o) => t + (o.price - o.offer), 0);
+    const dayCol = d => d >= 90 ? '#e53935' : d >= 60 ? '#fb8c00' : d >= 30 ? '#f9a825' : '#546e7a';
+    const tile = o => {
+      const img = o.image ? String(o.image).replace(/s-l\d+/, 's-l500') : null;
+      return `<div class="tile offer-tile${o.long_shot ? ' shot' : ''}" data-row>
+        <a class="tile-img" href="${esc(o.url)}" target="_blank" rel="noopener">${img ? `<img src="${esc(img)}" loading="lazy" alt="">` : '<div class="noimg">🃏</div>'}
+          <span class="offer-days" style="background:${dayCol(o.days)}">${o.days}d up</span>
+          ${o.long_shot ? '<span class="offer-shot">🎲 long shot</span>' : ''}</a>
+        <div class="offer-body">
+          <div class="offer-title" title="${esc(o.title)}">${o.must_have ? '⭐ ' : ''}${esc(o.title)}</div>
+          <div class="offer-ask">asks <s>${money(o.price)}</s> + ${shipTxt(o)}${o.value != null ? ` · worth ~<b>${money(o.value)}</b>` : ''}</div>
+          <div class="offer-open"><span>OPEN AT</span><b>$${cents(o.offer)}</b><em>${o.open_pct != null ? o.open_pct + '% of ask' : ''}</em></div>
+          ${o.counter != null && o.counter > o.offer ? `<div class="offer-counter">If they counter: pay up to <b>$${cents(o.counter)}</b>, no more</div>` : `<div class="offer-counter muted">Take it or leave it: don't go higher</div>`}
+          ${(o.tactics || []).length ? `<div class="offer-why">${o.tactics.map(t => `<span>${esc(t)}</span>`).join('')}</div>` : ''}
+          <div class="row tight">${linkBtn('Make offer ↗', o.url, '#2e7d32')}${copyBtn('Copy ' + cents(o.offer), cents(o.offer))}${o.counter != null && o.counter > o.offer ? copyBtn('Copy ' + cents(o.counter), cents(o.counter)) : ''}</div>
+        </div></div>`;
+    };
+    const how = `<details class="offer-how"><summary>📖 How to lowball (tap)</summary><ol>
+      <li><b>Open at the number.</b> Send exactly the "open at" amount: the quarter past the dollar reads as a considered price, not a round guess.</li>
+      <li><b>Counter once.</b> If the seller counters, accept anything at or under the counter line; over it, counter back at the line once, then walk.</li>
+      <li><b>Time is your leverage.</b> The longer it has sat, the lower the opener (two weeks 68%, a month 60%, two months 55%, three months 50% of the ask). A price cut or a seller with 3+ stale listings takes 5% more off.</li>
+      <li><b>Watch it too.</b> Sellers can send offers to everyone watching a listing; watching the ones you lowball invites a better price back.</li>
+      <li><b>Bundle a seller.</b> Several stale cards from one seller: offer on each, then ask for combined shipping.</li>
+      <li><b>Long shots cost nothing.</b> 🎲 ones are priced far over what the card sells for; the opener is under 40% of the ask and will often be declined. Fire them anyway.</li></ol></details>`;
+    const head = `<div style="padding-top:10px"></div>` + grid(3, [
+      stat('OFFER TARGETS', all.length, '#2e7d32', '🎣'),
+      stat('SITTING 60+ DAYS', all.filter(o => o.days >= 60).length, '#fb8c00', '🕸️'),
+      stat('ASKS OFF IF ALL HIT', '$' + Math.round(saved).toLocaleString(), '#1e88e5', '✂️')]) + how +
+      chips('offer_view', 'best', [['best', '🎯 Best openers'], ['all', 'All ' + all.length], ['stale', '🕸️ 60+ days'], ['shots', '🎲 Long shots'], ['sellers', '📦 By seller' + (bundles.length ? ' ' + bundles.length : '')]]);
+    if (view === 'sellers') return head + (bundles.length ? bundles.map(([seller, l]) => `<div class="line" style="padding:10px 0">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>📦 ${esc(seller)} · ${l.length} stale listings</b>
+          <span class="muted" style="font-size:12px">open ${money(l.reduce((t, o) => t + o.offer, 0))} for ${money(l.reduce((t, o) => t + o.price, 0))} asked</span></div>
+        <div class="muted" style="font-size:12px;margin:2px 0 6px">Offer on each, then message the seller for combined shipping.</div>
+        <div class="offer-grid">${l.map(tile).join('')}</div></div>`).join('') : empty('No seller has more than one stale listing on your cards right now.'));
+    return head + (list.length ? `<div class="offer-grid">${list.slice(0, Number(c.card.config.count) || 40).map(tile).join('')}</div>` : empty('Nothing in this view right now.'));
   }],
 
   lowball: ['Lowball snipes', false, c => {
@@ -2235,7 +2269,7 @@ const PANELS = {
       ['radar', '🎯 Radar', 'radar', (c.d.radar || []).filter(r => !(c.hiding && c.inGixen(r))).length],
       ['bundles', '📦 Bundles', 'bundles', (c.d.bundles || []).length], ['under', 'Under $20', 'under'],
       ['rookies', 'Rookies & 2019', 'focus'], ['year', 'By year', 'by_year'], ['rarest', 'Rarest', 'rarest'],
-      ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🤝 Offers', 'offers', offers.length],
+      ['lowball', '🐟 Lowball', 'lowball', lb && lb.length], ['offers', '🎣 Lowball offers', 'offers', offers.length],
       ['drops', '📉 Price drops', 'moves', (c.d.moves || []).length],
       ['missed', '🕳️ Missed', 'missed', ((c.d.market || {}).missed || []).length], ['all', 'Every pick', 'all_picks', c.picks.length]];
     const chosen = VIEWS.find(v => v[0] === store('steal_view', 'best')) || VIEWS[0];
@@ -2415,6 +2449,25 @@ const STYLE = `
     .tp-img { max-width: none; align-self: center; }
     .tp-img img { max-height: 300px; }
   }
+  .offer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; margin-top: 10px; }
+  @media (max-width: 500px) { .offer-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } .offer-open b { font-size: 19px; } .offer-open em { display: none; } }
+  .offer-tile { border: 1px solid #2e7d3266; }
+  .offer-tile.shot { border-color: #8e24aa66; }
+  .offer-days, .offer-shot { position: absolute; top: 6px; z-index: 1; color: #fff; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 10px; box-shadow: 0 1px 3px #0006; }
+  .offer-days { left: 6px; } .offer-shot { right: 6px; background: #8e24aa; }
+  .offer-body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .offer-title { font-size: 12px; font-weight: 700; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .offer-ask { font-size: 12px; color: var(--secondary-text-color); }
+  .offer-open { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; padding: 6px 10px; border-radius: 10px; background: #2e7d3222; }
+  .offer-open span { font-size: 10px; font-weight: 800; letter-spacing: 1.5px; color: #2e7d32; }
+  .offer-open b { font-size: 24px; font-weight: 900; color: #2e7d32; }
+  .offer-open em { font-style: normal; font-size: 11px; color: var(--secondary-text-color); margin-left: auto; }
+  .offer-counter { font-size: 12px; }
+  .offer-why { display: flex; flex-wrap: wrap; gap: 4px; }
+  .offer-why span { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 8px; background: color-mix(in srgb, var(--primary-text-color) 10%, transparent); }
+  .offer-how { margin: 10px 0 4px; font-size: 12px; }
+  .offer-how summary { cursor: pointer; font-weight: 700; }
+  .offer-how ol { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
   .jewels-cap { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--secondary-text-color); margin: 4px 0 8px; }
   .jewels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
   .jewel { position: relative; cursor: pointer; border-radius: 14px; padding: 8px; background: linear-gradient(160deg, #ffd54f33, #ff6f0022 40%, #7c4dff22);
@@ -2868,6 +2921,7 @@ class SnipeHuntStrategy {
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
         {...section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')), column_span: 3},
+        {...section(heading('Lowball offers', 'mdi:hand-coin-outline'), panel('offers')), column_span: 3},
       ]},
       catalog: {title: 'Catalog', path: 'catalog', icon: 'mdi:book-open-variant', sections: [
         {...section(heading('Every Walker card', 'mdi:book-open-variant'), panel('catalog')), column_span: 3},
