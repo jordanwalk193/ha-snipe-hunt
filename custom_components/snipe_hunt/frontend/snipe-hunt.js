@@ -456,6 +456,24 @@ const takeover = c => {
   }, 1000);
 };
 
+// The Hall of Fame's top three on a podium: silver, gold (raised, centre), bronze. Each opens
+// its card sheet when the binder knows the card (by inventory id), with your own photo of it.
+const podium = (c, top) => {
+  if ((top || []).length < 3) return '';
+  const STEP = [['🥇', '#ffca28', 'gold', 1], ['🥈', '#b0bec5', 'silver', 0], ['🥉', '#d7884f', 'bronze', 2]];
+  const spot = i => {
+    const x = top[i], own = x.id != null && c.art.get(String(x.id));
+    const pic = (own && own.i) || (x.image ? String(x.image).replace(/s-l\d+/, 's-l500') : null);
+    const [medal, color, name] = STEP[i];
+    return `<div class="pod pod-${name}" style="--pod:${color}"${own ? ` role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}"` : ''} title="${esc(x.card)}">
+      <div class="pod-img">${pic ? `<img src="${esc(pic)}" alt="">` : '<div class="pk-none">🃏</div>'}</div>
+      <div class="pod-off">-${x.off_pct}%</div>
+      <div class="pod-name">${esc(x.card)}</div>
+      <div class="pod-step"><span class="pod-medal">${medal}</span><b>${money(x.paid)}</b> for ${money(x.value)}</div></div>`;
+  };
+  return `<div class="podium">${spot(1)}${spot(0)}${spot(2)}</div>`;
+};
+
 // The card sheet: tap a card in the binder for its picture (tilt it, it shines), what you
 // paid against what it's worth, and the ledger's recent sales of the same card. Like the
 // takeover it lives on document.body so it covers the whole screen; Esc or a tap outside closes it.
@@ -1380,6 +1398,7 @@ const PANELS = {
       stat('UNDER VALUE', '$' + Math.round(t.saved || 0).toLocaleString(), t.saved >= 0 ? '#2e7d32' : '#c62828', '💰'),
       stat('PAID OF VALUE', t.pct == null ? '–' : t.pct + '%', '#ef6c00', '🏷️'),
     ]) + `<div class="muted" style="font-size:12px;margin:8px 0 2px;line-height:1.5">${t.cards} card${t.cards === 1 ? '' : 's'} priced by real sales of the same card${t.unpriced ? ` (${t.unpriced} more with no sale on record yet)` : ''}${bot.n ? ` · <b style="color:var(--primary-text-color)">${bot.n}</b> bought as the bot's picks, <b style="color:#2e7d32">${worth(bot.saved)}</b> under value` : ''}</div>` +
+      podium(c, h.top) +
       cap(`THE ${n === 10 ? 'TEN' : n} BEST STEALS OF ALL TIME`) +
       h.top.slice(0, n).map((x, i) => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:7px 0">
         <div class="rank" style="${i < 3 ? 'font-size:20px;width:28px' : ''}">${medal(i)}</div>
@@ -2347,6 +2366,23 @@ const STYLE = `
              background: #2e7d32; color: #fff; box-shadow: 0 1px 3px #0006; }
   .pk-cap { padding: 6px 2px 0; display: flex; flex-direction: column; gap: 2px; }
   .pk-name { font-size: 11px; line-height: 1.25; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 10px; align-items: end; margin: 16px 0 6px; }
+  .pod { min-width: 0; text-align: center; cursor: default; }
+  .pod[data-do] { cursor: pointer; }
+  .pod-img { position: relative; aspect-ratio: 5 / 7; border-radius: 10px; overflow: hidden; background: #0003; box-shadow: 0 0 0 3px var(--pod), 0 8px 20px #0005;
+             transition: transform .2s ease; }
+  .pod[data-do]:hover .pod-img { transform: translateY(-4px) rotate(-1deg); }
+  .pod-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .pod-gold .pod-img::after { content: ''; position: absolute; inset: -60%; pointer-events: none; mix-blend-mode: overlay;
+                              background: linear-gradient(115deg, transparent 40%, #fff9 50%, transparent 60%); animation: jewel-shine 4s ease-in-out infinite; }
+  .pod-off { display: inline-block; margin-top: -12px; position: relative; padding: 2px 10px; border-radius: 999px; background: #2e7d32; color: #fff;
+             font-weight: 900; font-size: 15px; box-shadow: 0 2px 6px #0006; }
+  .pod-name { font-size: 11px; line-height: 1.25; margin: 4px 2px; height: 2.5em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .pod-step { border-radius: 10px 10px 4px 4px; padding: 8px 4px; font-size: 12px; color: #000c; background: linear-gradient(var(--pod), color-mix(in srgb, var(--pod) 70%, #000)); }
+  .pod-step b { font-size: 15px; }
+  .pod-medal { display: block; font-size: 24px; line-height: 1.1; }
+  .pod-gold .pod-step { padding-top: 22px; padding-bottom: 22px; }
+  .pod-silver .pod-step { padding-top: 12px; padding-bottom: 12px; }
   .jewels-cap { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--secondary-text-color); margin: 4px 0 8px; }
   .jewels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
   .jewel { position: relative; cursor: pointer; border-radius: 14px; padding: 8px; background: linear-gradient(160deg, #ffd54f33, #ff6f0022 40%, #7c4dff22);
