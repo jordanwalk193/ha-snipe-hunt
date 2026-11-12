@@ -2102,7 +2102,8 @@ const PANELS = {
     ]) + (late.length ? `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px">📮 ${late.length} card${late.length === 1 ? ' has' : 's have'} shown "in transit" for 3+ weeks. Cheap cards often come untracked, so no delivery email ever arrives: check your pile and tap <b>Got it</b> on the ones you have. Anything still missing: message the seller or open a case. ${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>` : '') +
     cap('IN THE MAIL · OLDEST FIRST') + (transit.length ? rows(mailAll ? transit : transit.slice(0, MAIL_SHOWN)) +
       (transit.length > MAIL_SHOWN ? `<div style="padding-top:8px">${setBtn(mailAll ? 'Show fewer' : 'Show all ' + transit.length, 'mail_limit', mailAll ? 'page' : 'all', '#546e7a')}</div>` : '') : empty('Nothing in transit.')) +
-    cap('WON, WAITING ON PAYMENT OR SHIPPING') + (unpaid.length ? rows(unpaid) : empty('Nothing waiting.')) + `</div>`;
+    cap('WON, WAITING ON PAYMENT OR SHIPPING') + (unpaid.length ? rows(mailAll ? unpaid : unpaid.slice(0, MAIL_SHOWN)) +
+      (unpaid.length > MAIL_SHOWN && !mailAll ? `<div style="padding-top:8px">${setBtn('Show all ' + unpaid.length, 'mail_limit', 'all', '#546e7a')}</div>` : '') : empty('Nothing waiting.')) + `</div>`;
   }],
 
   binder: ['Every card', false, c => {
