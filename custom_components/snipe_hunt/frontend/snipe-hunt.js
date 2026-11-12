@@ -253,8 +253,7 @@ const pocket = (x, n = 0, rank = null) => {
     <div class="pk-cap"><span class="pk-name">${rank ? `<span class="pk-rank">#${rank}</span> ` : ''}${esc(x.n)}</span>
       <span class="pk-money">${x.p ? money(x.p) : '–'}${x.v != null ? ` ▸ <b style="color:${x.v >= x.p ? '#43a047' : '#e53935'}">${money(x.v)}</b>` : ''}</span></div>`;
   const find = esc((x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase());
-  const attrs = `class="pocket" data-find="${find}" title="${esc(x.n + ' · ' + x.s + ' · ' + x.pg)}"${ring ? ` style="--ring:${ring}"` : ''}`;
-  return x.e ? `<a ${attrs} href="https://www.ebay.com/itm/${esc(x.e)}" target="_blank" rel="noopener">${inner}</a>` : `<div ${attrs}>${inner}</div>`;
+  return `<div class="pocket" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" data-find="${find}" title="${esc(x.n + ' · ' + x.s + ' · ' + x.pg)}"${ring ? ` style="--ring:${ring}"` : ''}>${inner}</div>`;
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
@@ -455,6 +454,110 @@ const takeover = c => {
       if (msLeft(x.dataset.tkEnd) <= 0) { takeoverKey = null; takeover(takeoverCtx); } else x.textContent = left(x.dataset.tkEnd);
     });
   }, 1000);
+};
+
+// The card sheet: tap a card in the binder for its picture (tilt it, it shines), what you
+// paid against what it's worth, and the ledger's recent sales of the same card. Like the
+// takeover it lives on document.body so it covers the whole screen; Esc or a tap outside closes it.
+const SHEET_ID = 'snipe-hunt-sheet';
+const SHEET_CSS = `
+  #${SHEET_ID} .sh-back { position: fixed; inset: 0; z-index: 2147482000; background: rgba(0,0,0,.72); display: flex; align-items: center; justify-content: center;
+    padding: 14px; font-family: var(--paper-font-body1_-_font-family, system-ui, sans-serif); animation: sh-fade .15s ease; }
+  #${SHEET_ID} .sh { width: min(760px, 100%); max-height: 94vh; overflow: auto; border-radius: 20px; padding: 18px; display: grid; grid-template-columns: minmax(0, 300px) 1fr; gap: 20px;
+    background: var(--card-background-color, #1c1c1c); color: var(--primary-text-color, #eee); box-shadow: 0 20px 60px #000a; animation: sh-pop .2s ease; }
+  @media (max-width: 640px) { #${SHEET_ID} .sh { grid-template-columns: 1fr; padding: 14px; gap: 14px; } #${SHEET_ID} .sh-stage { max-width: 260px; margin: 0 auto; } }
+  #${SHEET_ID} .sh-stage { perspective: 900px; }
+  #${SHEET_ID} .sh-card { position: relative; aspect-ratio: 5 / 7; border-radius: 14px; overflow: hidden; background: #0004; transform-style: preserve-3d;
+    transition: transform .25s ease, box-shadow .25s ease; box-shadow: 0 14px 34px #0009, 0 0 0 3px var(--ring, transparent); }
+  #${SHEET_ID} .sh-card img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #${SHEET_ID} .sh-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; mix-blend-mode: color-dodge; opacity: var(--shine, .25);
+    background: radial-gradient(circle at var(--mx, 30%) var(--my, 20%), #ffffffb0, transparent 45%),
+      linear-gradient(115deg, transparent 20%, #ff00c855 35%, #00e5ff55 50%, #fff20055 65%, transparent 80%);
+    background-size: 100% 100%, 250% 250%; background-position: 0 0, var(--mx, 30%) var(--my, 20%); transition: opacity .25s; }
+  #${SHEET_ID} .sh-none { height: 100%; display: flex; align-items: center; justify-content: center; font-size: 64px; }
+  #${SHEET_ID} .sh-name { font-size: 20px; font-weight: 800; line-height: 1.2; }
+  #${SHEET_ID} .sh-meta { font-size: 13px; color: var(--secondary-text-color, #aaa); margin-top: 6px; line-height: 1.5; }
+  #${SHEET_ID} .sh-flags span { display: inline-block; color: #fff; border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 800; margin: 8px 4px 0 0; }
+  #${SHEET_ID} .sh-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  #${SHEET_ID} .sh-stat { border-radius: 12px; padding: 10px 8px; text-align: center; background: color-mix(in srgb, var(--primary-text-color, #fff) 7%, transparent); }
+  #${SHEET_ID} .sh-stat b { display: block; font-size: 22px; font-weight: 900; }
+  #${SHEET_ID} .sh-stat span { font-size: 10px; letter-spacing: 1.5px; font-weight: 700; color: var(--secondary-text-color, #aaa); }
+  #${SHEET_ID} .sh-cap { font-size: 11px; letter-spacing: 1.5px; font-weight: 700; color: var(--secondary-text-color, #aaa); margin: 16px 0 6px; }
+  #${SHEET_ID} .sh-spark { width: 100%; height: 90px; display: block; }
+  #${SHEET_ID} .sh-sale { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--divider-color, #fff2);
+    color: inherit; text-decoration: none; }
+  #${SHEET_ID} .sh-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  #${SHEET_ID} .sh-btn { cursor: pointer; border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 800; text-decoration: none;
+    background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); }
+  #${SHEET_ID} .sh-btn.ghost { background: color-mix(in srgb, var(--primary-text-color, #fff) 10%, transparent); color: inherit; }
+  @keyframes sh-fade { from { opacity: 0; } }
+  @keyframes sh-pop { from { transform: translateY(14px) scale(.97); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #${SHEET_ID} .sh-back, #${SHEET_ID} .sh { animation: none; } #${SHEET_ID} .sh-card { transition: none; } }`;
+const SHEET_FLAG = {R: ['RC', '#fb8c00'], A: ['AUTO', '#00897b'], L: ['RELIC', '#00897b'], N: ['NUMBERED', '#8e24aa'], G: ['GRADED', '#546e7a'], F: ['FRONT PAGE', '#f9a825'], D: ['DUPE', '#6d4c41']};
+const sparkSvg = (h, paid) => {
+  // the ledger's sales oldest → newest, with what you paid as a dashed line
+  const pts = h.slice().reverse(), vals = pts.map(x => x[1]).concat(paid ? [paid] : []);
+  const lo = Math.min(...vals) * 0.9, hi = Math.max(...vals) * 1.08 || 1, W = 300, H = 90;
+  const X = i => pts.length === 1 ? W / 2 : 8 + i * (W - 16) / (pts.length - 1), Y = v => H - 8 - (v - lo) / ((hi - lo) || 1) * (H - 16);
+  const line = pts.map((x, i) => `${X(i).toFixed(1)},${Y(x[1]).toFixed(1)}`).join(' ');
+  return `<svg class="sh-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Recent sales">
+    ${paid ? `<line x1="0" x2="${W}" y1="${Y(paid).toFixed(1)}" y2="${Y(paid).toFixed(1)}" stroke="currentColor" stroke-opacity=".45" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>` : ''}
+    ${pts.length > 1 ? `<polyline points="${line}" fill="none" stroke="var(--primary-color, #03a9f4)" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : ''}
+    ${pts.map((x, i) => `<circle cx="${X(i).toFixed(1)}" cy="${Y(x[1]).toFixed(1)}" r="4" fill="${paid && x[1] < paid ? '#e53935' : '#43a047'}"><title>${esc(x[0])}: ${money(x[1])}</title></circle>`).join('')}
+  </svg>`;
+};
+const closeSheet = () => { const el = document.getElementById(SHEET_ID); if (el) el.remove(); document.removeEventListener('keydown', sheetKey); };
+const sheetKey = ev => { if (ev.key === 'Escape') closeSheet(); };
+const openSheet = x => {
+  closeSheet();
+  if (!x) return;
+  const ring = [...x.f].map(f => POCKET_RING[f]).find(Boolean);
+  const big = x.i ? String(x.i).replace(/s-l\d+/, 's-l800') : null;
+  const gain = x.v != null && x.p > 0 ? x.v / x.p : null;
+  const h = x.h || [];
+  const look = 'https://www.ebay.com/sch/i.html?_sacat=261328&_sop=15&_nkw=' + encodeURIComponent(x.n.replace(/[#/]/g, ' '));
+  const el = document.createElement('div');
+  el.id = SHEET_ID;
+  el.innerHTML = `<style>${SHEET_CSS}</style><div class="sh-back" data-sh="close"><div class="sh" role="dialog" aria-label="${esc(x.n)}">
+    <div class="sh-stage"><div class="sh-card"${ring ? ` style="--ring:${ring}"` : ''}>${big ? `<img src="${esc(big)}" alt="">` : '<div class="sh-none">🃏</div>'}</div>
+      ${x.if === 'same' ? '<div class="sh-meta" style="text-align:center">≈ photo of another copy of this card</div>' : ''}</div>
+    <div style="min-width:0">
+      <div class="sh-name">${esc(x.n)}</div>
+      <div class="sh-flags">${[...x.f].map(f => `<span style="background:${SHEET_FLAG[f][1]}">${SHEET_FLAG[f][0]}</span>`).join('')}</div>
+      <div class="sh-meta">${esc(x.s)} · page ${esc(x.pg)}${x.d ? '<br>bought ' + esc(x.d) : ''}${x.sl ? ' from ' + esc(x.sl) : ''}</div>
+      <div class="sh-stats">
+        <div class="sh-stat"><b>${x.p ? money(x.p) : '–'}</b><span>PAID</span></div>
+        <div class="sh-stat"><b style="color:${x.v == null ? 'inherit' : (x.v >= x.p ? '#43a047' : '#e53935')}">${x.v != null ? money(x.v) : '–'}</b><span>WORTH NOW</span></div>
+        <div class="sh-stat"><b style="color:${gain == null ? 'inherit' : (gain >= 1 ? '#43a047' : '#e53935')}">${gain != null ? '×' + (gain >= 10 ? Math.round(gain) : gain.toFixed(1)) : '–'}</b><span>GAIN</span></div>
+      </div>
+      ${h.length ? `<div class="sh-cap">RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID</div>${sparkSvg(h, x.p)}` +
+        h.slice(0, 6).map(s => `<a class="sh-sale" href="https://www.ebay.com/itm/${esc(s[2])}" data-sh="open"><span>${esc(s[0])}</span><b>${money(s[1])}</b></a>`).join('')
+        : '<div class="sh-meta" style="margin-top:14px">No sales of this card in the ledger yet, so it is valued at what you paid.</div>'}
+      <div class="sh-btns">
+        ${x.e ? `<a class="sh-btn" href="https://www.ebay.com/itm/${esc(x.e)}" data-sh="open">Your listing ↗</a>` : ''}
+        <a class="sh-btn ghost" href="${esc(look)}" data-sh="open">Find another on eBay ↗</a>
+        <span class="sh-btn ghost" data-sh="close">Close</span>
+      </div>
+    </div></div></div>`;
+  const card = el.querySelector('.sh-card');
+  const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!still) {
+    card.addEventListener('pointermove', ev => {
+      const r = card.getBoundingClientRect(), px = (ev.clientX - r.left) / r.width, py = (ev.clientY - r.top) / r.height;
+      card.style.transform = `rotateY(${(px - .5) * 22}deg) rotateX(${(.5 - py) * 22}deg) scale(1.03)`;
+      card.style.setProperty('--mx', (px * 100).toFixed(0) + '%'); card.style.setProperty('--my', (py * 100).toFixed(0) + '%'); card.style.setProperty('--shine', '.7');
+    });
+    card.addEventListener('pointerleave', () => { card.style.transform = ''; card.style.setProperty('--shine', '.25'); });
+  }
+  el.addEventListener('click', ev => {
+    const t = ev.target.closest('[data-sh]');
+    if (!t) return;
+    if (t.dataset.sh === 'close' && t !== ev.target && !ev.target.closest('.sh-btn')) return;   // a tap inside the sheet isn't a tap outside it
+    ev.preventDefault();
+    if (t.dataset.sh === 'open') window.open(t.href, '_blank', 'noopener'); else closeSheet();
+  });
+  document.addEventListener('keydown', sheetKey);
+  document.body.appendChild(el);
 };
 
 // Auctions ending within the hour at 10% of their value or less (the bot's bidnow.py).
@@ -1897,7 +2000,12 @@ const PANELS = {
       hbar('Gixen snipes', a.gixen_wins, gixTotal, '#8e24aa', `${a.gixen_wins} of ${gixTotal}`) +
     `</div><div class="muted" style="font-size:12px;margin-top:6px">The other ${a.wins - a.gixen_wins} wins were straight eBay buys, bids and offers.</div>` +
     cap('LATEST ONES THAT GOT AWAY') +
-    ((a.recent_losses || []).length ? a.recent_losses.map(e => `<div class="line" style="padding:5px 0;font-size:13px">${esc(e.title)}<br><span class="muted" style="font-size:11px">${esc(e.date)}${e.seller ? ' · ' + esc(e.seller) : ''}</span></div>`).join('') : empty('No losses on record.')) + `</div>`;
+    ((a.recent_losses || []).length ? a.recent_losses.map(e => {
+      const pic = e.image ? `<img src="${esc(e.image)}" loading="lazy" alt="" style="width:40px;height:56px;object-fit:cover;border-radius:5px;display:block">` : '<div style="width:40px;height:56px;border-radius:5px;background:#8882"></div>';
+      const by = e.sold != null && e.my_max != null ? `<b style="color:#e53935">${money(e.sold)}</b> <span class="muted">vs your ${cents(e.my_max)}</span>` : (e.sold != null ? `<b>${money(e.sold)}</b>` : '');
+      return `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${e.item_id ? `<a href="https://www.ebay.com/itm/${esc(e.item_id)}" target="_blank" rel="noopener" style="flex:none">${pic}</a>` : pic}
+        <span style="flex:1;min-width:0">${esc(e.title)}<br><span class="muted" style="font-size:11px">${esc(e.date)}${e.seller ? ' · ' + esc(e.seller) : ''}</span></span>${by ? `<span style="flex:none;text-align:right;font-size:12px">${by}</span>` : ''}</div>`;
+    }).join('') : empty('No losses on record.')) + `</div>`;
   }],
 
   collection: ['Collection', false, c => {
@@ -2008,7 +2116,14 @@ const PANELS = {
       ${ranked ? `<span class="rank">${i + 1}</span>` : ''}${x.i ? `<img src="${esc(x.i)}" loading="lazy" alt="" style="width:34px;height:47px;object-fit:cover;border-radius:4px;flex:none">` : ''}
       <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}${x.vn ? ' · ' + x.vn + ' sale' + (x.vn === 1 ? '' : 's') : ''}</span></span><span style="flex:none;text-align:right"><b>${x.p ? money(x.p) : ''}</b>${worthTxt(x)}</span></div>`;
     const body = groups.map(g => head(g) + g.cards.map(x => { const i = n++; return wall ? pocket(x, i, ranked ? i + 1 : null) : listRow(x, i); }).join('')).join('');
-    return `<div style="padding-top:10px">
+    const jewels = c.cards.filter(x => x.i).sort((x, y) => (y.v ?? y.p) - (x.v ?? x.p)).slice(0, 5);
+    const MEDAL = ['🥇', '🥈', '🥉', '4', '5'];
+    const crown = jewels.length < 3 ? '' : `<div class="jewels-cap">👑 CROWN JEWELS · WORTH THE MOST</div><div class="jewels">` + jewels.map((x, i) =>
+      `<div class="jewel" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" title="${esc(x.n)}">
+        <div class="jewel-img"><img src="${esc(String(x.i).replace(/s-l\d+/, 's-l500'))}" alt=""></div>
+        <div class="jewel-medal">${MEDAL[i]}</div>
+        <div class="jewel-txt"><b>${money(x.v ?? x.p)}</b><span>${esc(x.n)}</span></div></div>`).join('') + `</div>`;
+    return `<div style="padding-top:10px">${crown}
     <input data-search type="search" placeholder="Search ${total} cards: set, year, parallel, seller…" value="${esc(c.card.query)}">` +
     `<div class="row" style="align-items:center;margin-top:8px">` +
       sel('cardsort', sort, [['new', '🆕 Newest buys'], ['value', '💎 Worth most'], ['price', '💳 Priciest paid'], ['gain', '📈 Biggest gain (×)'], ['steal', '🏷️ Best buys (% of worth)'], ['year', '📅 Year, newest first'], ['yearold', '📅 Year, oldest first'], ['name', '🔤 Set A–Z']]) +
@@ -2212,7 +2327,7 @@ const STYLE = `
   .binder { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 12px; margin-top: 10px; padding: 14px;
             border-radius: 14px; background: color-mix(in srgb, var(--primary-text-color) 5%, transparent);
             box-shadow: inset 0 0 0 1px var(--divider-color); }
-  .pocket { display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--primary-text-color);
+  .pocket { cursor: pointer; display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--primary-text-color);
             border-radius: 10px; padding: 6px; background: color-mix(in srgb, var(--card-background-color) 85%, var(--primary-text-color) 4%);
             box-shadow: 0 0 0 2px var(--ring, transparent), 0 2px 6px #0003; transition: transform .15s ease, box-shadow .15s ease; }
   .pocket:hover { transform: translateY(-3px) rotate(-.6deg); box-shadow: 0 0 0 2px var(--ring, var(--primary-color)), 0 8px 18px #0005; }
@@ -2232,6 +2347,26 @@ const STYLE = `
              background: #2e7d32; color: #fff; box-shadow: 0 1px 3px #0006; }
   .pk-cap { padding: 6px 2px 0; display: flex; flex-direction: column; gap: 2px; }
   .pk-name { font-size: 11px; line-height: 1.25; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .jewels-cap { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--secondary-text-color); margin: 4px 0 8px; }
+  .jewels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .jewel { position: relative; cursor: pointer; border-radius: 14px; padding: 8px; background: linear-gradient(160deg, #ffd54f33, #ff6f0022 40%, #7c4dff22);
+           box-shadow: 0 0 0 2px #ffca2899, 0 6px 16px #0004; transition: transform .2s ease; }
+  .jewel:hover { transform: translateY(-4px) scale(1.02); }
+  .jewel-img { position: relative; aspect-ratio: 5 / 7; border-radius: 8px; overflow: hidden; background: #0003; }
+  .jewel-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .jewel-img::after { content: ''; position: absolute; inset: -60%; pointer-events: none; mix-blend-mode: overlay;
+                      background: linear-gradient(115deg, transparent 40%, #ffffffaa 50%, transparent 60%); animation: jewel-shine 4.5s ease-in-out infinite; }
+  .jewel:nth-child(2) .jewel-img::after { animation-delay: .9s; } .jewel:nth-child(3) .jewel-img::after { animation-delay: 1.8s; }
+  .jewel:nth-child(4) .jewel-img::after { animation-delay: 2.7s; } .jewel:nth-child(5) .jewel-img::after { animation-delay: 3.6s; }
+  @keyframes jewel-shine { 0%, 60% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+  @media (prefers-reduced-motion: reduce) { .jewel-img::after { animation: none; } }
+  .jewel-medal { position: absolute; top: 2px; left: 2px; min-width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 14px;
+                 background: #000b; color: #fff; font-weight: 900; font-size: 15px; }
+  .jewel-txt { padding-top: 6px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .jewel-txt b { font-size: 18px; }
+  .jewel-txt span { font-size: 11px; line-height: 1.25; color: var(--secondary-text-color); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  @media (max-width: 500px) { .jewels { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 42%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+                              .jewel { scroll-snap-align: start; } }
   .pk-rank { font-weight: 800; color: var(--primary-color); }
   .pk-year { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 0; font-size: 20px; }
   .pk-year:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--divider-color); padding-top: 12px; }
@@ -2552,6 +2687,7 @@ class SnipeHuntCard extends HTMLElement {
     if (!el) return;
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
+    if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value));
     if (el.dataset.do === 'nav') {
       const base = location.pathname.split('/').slice(0, 2).join('/');
       history.pushState(null, '', base + '/' + el.dataset.path);
