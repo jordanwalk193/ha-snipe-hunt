@@ -2208,7 +2208,8 @@ const PANELS = {
     c.snipes.filter(x => x.outbid && x.check && x.check.room && x.check.win != null && Number(x.check.win) > Number(x.current_bid)).forEach(x => items.push(row('📈 Outbid, still cheap', '#fb8c00', {at: x.end_time, url: x.url, title: x.title || x.item_id,
       line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · to win ≈ ${cents(x.check.win)}`,
       buttons: copyBtn('Copy item #', x.item_id) + copyBtn('Copy ' + cents(x.check.win), cents(x.check.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
-    (c.d.pipeline.unpaid || []).filter(g => /^pay/i.test(g.advice)).forEach(g => items.push(row('💳 Pay', '#1e88e5', {title: g.seller + ' · ' + money(g.total),
+    const payPic = g => { const x = (g.ids || []).map(i => c.art.get(String(i))).find(y => y && y.i); return x ? {url: x.e ? 'https://www.ebay.com/itm/' + x.e : 'https://www.ebay.com/mye/myebay/purchase', image: x.i} : null; };
+    (c.d.pipeline.unpaid || []).filter(g => /^pay/i.test(g.advice)).forEach(g => items.push(row('💳 Pay', '#1e88e5', {item: payPic(g), title: g.seller + ' · ' + money(g.total) + ((g.count || 0) > 1 ? ' · ' + g.count + ' cards' : ''),
       line: esc(g.advice), buttons: linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')})));
     (c.d.offers || []).filter(o => o.value != null).slice(0, 3).forEach(o => items.push(row('🤝 Offer', '#2e7d32', {item: o, url: o.url, title: o.title,
       line: `asks ${money(o.price)} + ${shipTxt(o)} · goes for ~${money(o.value)} · up ${o.days} days · <b style="color:var(--primary-text-color)">offer ${cents(o.offer)}</b>`,
