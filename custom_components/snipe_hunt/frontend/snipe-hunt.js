@@ -530,7 +530,7 @@ const openSheet = x => {
         <div class="sh-stat"><b style="color:${x.v == null ? 'inherit' : (x.v >= x.p ? '#43a047' : '#e53935')}">${x.v != null ? money(x.v) : '–'}</b><span>WORTH NOW</span></div>
         <div class="sh-stat"><b style="color:${gain == null ? 'inherit' : (gain >= 1 ? '#43a047' : '#e53935')}">${gain != null ? '×' + (gain >= 10 ? Math.round(gain) : gain.toFixed(1)) : '–'}</b><span>GAIN</span></div>
       </div>
-      ${h.length ? `<div class="sh-cap">RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID</div>${sparkSvg(h, x.p)}` +
+      ${h.length ? `<div class="sh-cap">${h.length > 1 ? 'RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID' : 'THE ONE SALE OF THIS CARD ON RECORD'}</div>${h.length > 1 ? sparkSvg(h, x.p) : ''}` +
         h.slice(0, 6).map(s => `<a class="sh-sale" href="https://www.ebay.com/itm/${esc(s[2])}" data-sh="open"><span>${esc(s[0])}</span><b>${money(s[1])}</b></a>`).join('')
         : '<div class="sh-meta" style="margin-top:14px">No sales of this card in the ledger yet, so it is valued at what you paid.</div>'}
       <div class="sh-btns">
