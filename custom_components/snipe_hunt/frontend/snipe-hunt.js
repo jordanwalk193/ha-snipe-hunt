@@ -1813,6 +1813,7 @@ const PANELS = {
     if (!unpaid.length) return riding + empty('✅ Nothing is waiting on payment.');
     return riding + `<div style="padding-top:4px"></div>` + unpaid.map(g => `<div class="line" style="padding:8px 0">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(g.seller)} · ${money(g.total)}</b><span style="flex:none">${g.snipes ? pill('🎯 ' + g.snipes + ' sniping', '#6a1b9a') + ' ' : ''}${pill(esc(g.advice.split(':')[0].split(',')[0]), adviceColor(g.advice))}</span></div>
+      ${(g.ids || []).some(i => c.art.get(String(i))) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px">${g.ids.map(i => c.art.get(String(i))).filter(Boolean).map(x => cardPic(x, 40, 56)).join('')}</div>` : ''}
       <div class="muted" style="font-size:12px;line-height:1.35;margin-top:2px">${g.cards.map(esc).join('<br>')}${g.count > g.cards.length ? `<br>+ ${g.count - g.cards.length} more` : ''}</div>
       <div class="muted" style="font-size:11px;margin-top:2px">${esc(g.advice)}</div></div>`).join('') +
       `<div style="margin-top:8px">${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>`;
