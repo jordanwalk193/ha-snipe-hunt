@@ -238,6 +238,10 @@ const ownThumb = (c, id, w = 36, h = 50) => {
   const img = `<img src="${esc(x.i)}" loading="lazy" alt="" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:5px;display:block">`;
   return x.e ? `<a href="https://www.ebay.com/itm/${esc(x.e)}" target="_blank" rel="noopener" style="flex:none">${img}</a>` : `<span style="flex:none">${img}</span>`;
 };
+// A card you own as a small picture that opens its card sheet (binder rows, filing, the mail).
+const cardPic = (x, w = 38, h = 53) => x.i
+  ? `<span role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" style="flex:none;cursor:pointer"><img src="${esc(x.i)}" loading="lazy" alt="" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:5px;display:block"></span>`
+  : `<div style="width:${w}px;height:${h}px;border-radius:5px;background:#8882;flex:none;display:flex;align-items:center;justify-content:center">🃏</div>`;
 // One sleeve in the binder wall: the card's picture, its hit flags, what you paid and what it's worth now.
 const POCKET_RING = {A: '#00bfa5', L: '#00bfa5', N: '#ab47bc', G: '#78909c', F: '#fbc02d'};
 const pocket = (x, n = 0, rank = null) => {
@@ -2068,20 +2072,28 @@ const PANELS = {
     return `<div class="muted" style="font-size:12px;padding:10px 0 2px">${cards.length} delivered cards are waiting to go in the binder. Tap Filed once a card is in its page; that updates the inventory.</div>` +
     Object.keys(pages).sort((x, y) => order(x) - order(y)).map(pg => `<div data-row>
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;padding:6px 0"><b>📖 ${esc(pg)} · ${pages[pg].length}</b>${pages[pg].length > 1 ? act('File all ' + pages[pg].length, {action: 'filed', ids: pages[pg].map(x => x.id)}, {busy: 'Filing…', color: '#43a047', confirm: 'Tap again to file ' + pages[pg].length}) : ''}</div>` +
-      pages[pg].map(x => `<div data-row class="line" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;font-size:13px">
-        <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">#${esc(x.id)} · ${esc(x.d)} · ${money(x.p)}</span></span>
+      pages[pg].map(x => `<div data-row class="line" style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;font-size:13px">
+        ${cardPic(x, 42, 58)}<span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">#${esc(x.id)} · ${esc(x.d)} · ${money(x.p)}</span></span>
         ${act('Filed', {action: 'filed', ids: [x.id]}, {hide: true, color: '#43a047'})}</div>`).join('') + `</div>`).join('');
   }],
 
   on_the_way: ['On the way', false, c => {
     const transit = c.cards.filter(x => x.s === 'In transit').sort((x, y) => x.d < y.d ? -1 : 1);
     const unpaid = c.cards.filter(x => x.s === 'Won' || x.s === 'Awaiting payment');
-    const rows = list => list.map(x => `<div class="line" style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:13px">
-      <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)} · ${esc(x.sl)} · goes on ${esc(x.pg)}</span></span><b>${money(x.p)}</b></div>`).join('');
+    // days since the order: past two weeks in the mail is worth a nudge, past three a "where is it?" message
+    const days = x => x.d ? Math.floor((Date.now() - new Date(x.d + 'T12:00:00')) / 864e5) : null;
+    const age = x => { const n = days(x); if (n == null) return ''; const col = n >= 21 ? '#e53935' : (n >= 14 ? '#fb8c00' : null);
+      return col ? ' · ' + pill(n + ' days', col) : ' · ' + n + ' day' + (n === 1 ? '' : 's'); };
+    // Got it: in hand, to file. In binder: already filed. (Untracked envelopes never send a delivery email.)
+    const rows = list => list.map(x => `<div data-row class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${cardPic(x)}
+      <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)}${age(x)} · ${esc(x.sl)} · goes on ${esc(x.pg)}</span>
+        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${act('In binder', {action: 'arrived', ids: [x.id], binder: true}, {hide: true})}</span></span><b>${money(x.p)}</b></div>`).join('');
+    const late = transit.filter(x => days(x) >= 21);
     return `<div style="padding-top:10px">` + grid(2, [
       stat('IN TRANSIT', transit.length, '#1e88e5', '🚚'),
       stat('WON, NOT SHIPPED', unpaid.length, '#fb8c00', '⏳'),
-    ]) + cap('IN THE MAIL') + (transit.length ? rows(transit) : empty('Nothing in transit.')) +
+    ]) + (late.length ? `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px">📮 ${late.length} card${late.length === 1 ? ' has' : 's have'} shown "in transit" for 3+ weeks. Cheap cards often come untracked, so no delivery email ever arrives: check your pile and tap <b>Got it</b> on the ones you have. Anything still missing: message the seller or open a case. ${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>` : '') +
+    cap('IN THE MAIL') + (transit.length ? rows(transit) : empty('Nothing in transit.')) +
     cap('WON, WAITING ON PAYMENT OR SHIPPING') + (unpaid.length ? rows(unpaid) : empty('Nothing waiting.')) + `</div>`;
   }],
 
