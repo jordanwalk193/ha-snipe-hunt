@@ -81,6 +81,7 @@ const store = (key, def) => {
   try { return localStorage.getItem('ws_' + key) ?? def; } catch (e) { return def; }
 };
 const remember = (key, value) => {
+  if (key === 'binder_reset') { ['status', 'binder_kind', 'binder_year'].forEach(k => remember(k, 'all')); return; }   // the binder's ✕ Clear filters
   key = scoped(key);
   memory[key] = value;
   try { localStorage.setItem('ws_' + key, value); } catch (e) { /* not kept past this visit */ }
@@ -164,6 +165,7 @@ const context = (card) => {
     gixenOff: d.gixen == null,
     hours: Number(s.need_snipe_hours) || 24,
     cards: d.cards || [],
+    art: new Map((d.cards || []).map(x => [String(x.id), x])),
     need: (gixenOn ? soon.filter(p => p.snipe == null && !p.marked) : soon.filter(p => !p.marked)).sort((x, y) => x.end_time < y.end_time ? -1 : 1),
     snipes: (gixen.snipes || []).filter(x => msLeft(x.end_time) > 0),
     accent: card.config.accent || feed.options.accent || '#c41e3a',
@@ -228,6 +230,31 @@ const thumb = (p, w, h) => {
   return `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none">` + (p.image
     ? `<img src="${esc(p.image)}" loading="lazy" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:6px;display:block">`
     : `<div style="width:${w}px;height:${h}px;border-radius:6px;background:${t[1]}33;display:flex;align-items:center;justify-content:center;font-size:26px">🃏</div>`) + `</a>`;
+};
+// A card you own, by inventory id: its picture (the listing you bought it from) as a small thumbnail.
+const ownThumb = (c, id, w = 36, h = 50) => {
+  const x = id != null && c.art.get(String(id));
+  if (!x || !x.i) return `<div style="width:${w}px;height:${h}px;border-radius:5px;background:#8882;flex:none"></div>`;
+  const img = `<img src="${esc(x.i)}" loading="lazy" alt="" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:5px;display:block">`;
+  return x.e ? `<a href="https://www.ebay.com/itm/${esc(x.e)}" target="_blank" rel="noopener" style="flex:none">${img}</a>` : `<span style="flex:none">${img}</span>`;
+};
+// One sleeve in the binder wall: the card's picture, its hit flags, what you paid and what it's worth now.
+const POCKET_RING = {A: '#00bfa5', L: '#00bfa5', N: '#ab47bc', G: '#78909c', F: '#fbc02d'};
+const pocket = (x, n = 0, rank = null) => {
+  const ring = [...x.f].map(f => POCKET_RING[f]).find(Boolean);
+  const gain = x.v != null && x.p > 0 ? x.v / x.p : null;
+  const where = {'In transit': '🚚', 'Won': '🏷️', 'Delivered': '📥'}[x.s] || '';
+  const flags = [...x.f].filter(f => f !== 'D').map(f => `<span class="flag" style="background:${({R: '#fb8c00', A: '#00897b', L: '#00897b', N: '#8e24aa', G: '#546e7a', F: '#f9a825'})[f]}">${({R: 'RC', A: 'AUTO', L: 'RELIC', N: '#’D', G: 'SLAB', F: '★'})[f]}</span>`).join('');
+  const inner = `<div class="pk-img">${x.i ? `<img src="${esc(x.i)}" loading="${n < 24 ? 'eager' : 'lazy'}" alt="">` : `<div class="pk-none">🃏<span>${esc(x.n)}</span></div>`}
+      <div class="pk-flags">${flags}</div>
+      ${where ? `<div class="pk-where" title="${esc(x.s)}">${where}</div>` : ''}
+      ${x.if === 'same' ? '<div class="pk-same" title="Photo of another copy of this card">≈</div>' : ''}
+      ${gain != null && gain >= 1.5 ? `<div class="pk-gain">×${gain >= 10 ? Math.round(gain) : gain.toFixed(1)}</div>` : ''}</div>
+    <div class="pk-cap"><span class="pk-name">${rank ? `<span class="pk-rank">#${rank}</span> ` : ''}${esc(x.n)}</span>
+      <span class="pk-money">${x.p ? money(x.p) : '–'}${x.v != null ? ` ▸ <b style="color:${x.v >= x.p ? '#43a047' : '#e53935'}">${money(x.v)}</b>` : ''}</span></div>`;
+  const find = esc((x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase());
+  const attrs = `class="pocket" data-find="${find}" title="${esc(x.n + ' · ' + x.s + ' · ' + x.pg)}"${ring ? ` style="--ring:${ring}"` : ''}`;
+  return x.e ? `<a ${attrs} href="https://www.ebay.com/itm/${esc(x.e)}" target="_blank" rel="noopener">${inner}</a>` : `<div ${attrs}>${inner}</div>`;
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
@@ -1726,10 +1753,10 @@ const PANELS = {
       stat('PAID', '$' + Math.round(w.paid).toLocaleString(), '#546e7a', '💳'),
       stat(w.gain >= 0 ? 'UP' : 'DOWN', (w.gain >= 0 ? '+$' : '-$') + Math.abs(Math.round(w.gain)).toLocaleString(), gainColor, w.gain >= 0 ? '📈' : '📉')]) + `</div>` +
       `<div class=muted style="font-size:12px;margin-top:8px">${w.valued} of ${w.n} cards priced by the ledger's newest sale of the same card; the rest at what you paid.</div>` +
-      (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + w.movers.map(m => `<div class=line style="padding:6px 0;font-size:13px"><b>${esc(m.card)}</b> <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></div>`).join('') : '') +
-      cap('TOP CARDS BY THE LEDGER · GREY = PAID, COLOUR = WORTH') + top.map(x => `<div class=line style="padding:7px 0;font-size:13px"><b>${esc(x.card)}</b> <span class=muted style="font-size:12px">· ${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at}</span>
+      (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + w.movers.map(m => `<div class=line style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${ownThumb(c, m.id)}<span style="min-width:0"><b>${esc(m.card)}</b> <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></span></div>`).join('') : '') +
+      cap('TOP CARDS BY THE LEDGER · GREY = PAID, COLOUR = WORTH') + top.map(x => `<div class=line style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px">${ownThumb(c, x.id, 40, 56)}<div style="flex:1;min-width:0"><b>${esc(x.card)}</b> <span class=muted style="font-size:12px">· ${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at}</span>
         <div class="dual"><div class="dual-bars"><span class="dual-paid" style="width:${Math.round(x.paid / topMax * 100)}%"></span><span class="dual-worth" style="width:${Math.round(x.value / topMax * 100)}%;background:${x.value >= x.paid ? '#2e7d32' : '#c62828'}"></span></div>
-        <div class="dual-txt">${money(x.paid)} ▸ <b>${money(x.value)}</b> <b style="color:${x.value >= x.paid ? '#2e7d32' : '#c62828'}">${x.value >= x.paid ? '+' : ''}${Math.round((x.value - x.paid) / (x.paid || 1) * 100)}%</b></div></div></div>`).join('');
+        <div class="dual-txt">${money(x.paid)} ▸ <b>${money(x.value)}</b> <b style="color:${x.value >= x.paid ? '#2e7d32' : '#c62828'}">${x.value >= x.paid ? '+' : ''}${Math.round((x.value - x.paid) / (x.paid || 1) * 100)}%</b></div></div></div></div>`).join('');
   }],
 
   closes: ['Where steals happen', false, c => {
@@ -1902,7 +1929,7 @@ const PANELS = {
     ${budget > 0 ? `<div class="bar" style="margin-top:4px"><div style="width:${pct}%;background:${barColor}"></div></div>` : ''}` +
     cap('CARDS BY YEAR') + `<div style="display:flex;gap:4px;align-items:flex-end;margin-top:4px">${bars}</div>` +
     cap('BIGGEST BUYS') +
-    (a.priciest || []).map(r => `<div class="line" style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;font-size:13px"><span style="min-width:0">${esc(r.card)}</span><b>${money(r.paid)}</b></div>`).join('') + `</div>`;
+    (a.priciest || []).map(r => `<div class="line" style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px">${ownThumb(c, r.id)}<span style="flex:1;min-width:0">${esc(r.card)}</span><b>${money(r.paid)}</b></div>`).join('') + `</div>`;
   }],
 
   to_file: ['To file in the binder', false, c => {
@@ -1932,28 +1959,66 @@ const PANELS = {
   }],
 
   binder: ['Every card', false, c => {
-    const status = store('status', 'all'), sort = store('cardsort', 'new');
+    // Every card you own, ranked and filtered: a wall of pictures (the listing each one
+    // was bought from) or a plain list. Year/type/status filters stack; the search box narrows further.
+    const status = store('status', 'all'), sort = store('cardsort', 'new'), kind = store('binder_kind', 'all'), year = store('binder_year', 'all');
+    const wall = store('binder_view', 'wall') === 'wall' && c.cards.some(x => x.i);
+    const yearOf = x => (/^(\d{4})/.exec(x.n) || [])[1] || 'TBD';
+    const years = [...new Set(c.cards.map(yearOf))].sort().reverse();
+    const KINDS = {rc: ['⭐ Rookies', 'R'], auto: ['✍️ Autos & relics', 'AL'], num: ['🔢 Numbered', 'N'], slab: ['🏅 Graded', 'G'], front: ['📖 Front page', 'F'], dupe: ['♻️ Dupes', 'D']};
     let cards = c.cards.slice();
     const total = cards.length;
     if (status === 'flag') cards = cards.filter(x => /[ALNGF]/.test(x.f));
     else if (status === 'dupe') cards = cards.filter(x => x.f.includes('D'));
     else if (status !== 'all') cards = cards.filter(x => x.s === status);
-    if (sort === 'new') cards.sort((x, y) => (y.d || '') < (x.d || '') ? -1 : ((y.d || '') > (x.d || '') ? 1 : Number(y.id) - Number(x.id)));
-    if (sort === 'price') cards.sort((x, y) => y.p - x.p);
-    if (sort === 'year') cards.sort((x, y) => x.n < y.n ? -1 : 1);
-    if (sort === 'value') cards.sort((x, y) => (y.v || 0) - (x.v || 0));
-    if (sort === 'steal') cards.sort((x, y) => ((x.v ? x.p / x.v : 9) - (y.v ? y.p / y.v : 9)));
+    if (KINDS[kind]) cards = cards.filter(x => [...KINDS[kind][1]].some(f => x.f.includes(f)));
+    if (year !== 'all') cards = cards.filter(x => yearOf(x) === year);
+    const gain = x => x.v != null && x.p > 0 ? x.v / x.p : 0;
+    const byDate = (x, y) => (y.d || '') < (x.d || '') ? -1 : ((y.d || '') > (x.d || '') ? 1 : Number(y.id) - Number(x.id));
+    const yk = (x, tbd) => yearOf(x) === 'TBD' ? tbd : yearOf(x);   // undated cards sort last either way
+    const SORTS = {
+      new: byDate,
+      price: (x, y) => y.p - x.p,
+      value: (x, y) => (y.v || 0) - (x.v || 0),
+      gain: (x, y) => gain(y) - gain(x),
+      steal: (x, y) => ((x.v ? x.p / x.v : 9) - (y.v ? y.p / y.v : 9)),
+      year: (x, y) => yk(y, '0') < yk(x, '0') ? -1 : (yk(y, '0') > yk(x, '0') ? 1 : (x.n < y.n ? -1 : 1)),
+      yearold: (x, y) => yk(x, '9') < yk(y, '9') ? -1 : (yk(x, '9') > yk(y, '9') ? 1 : (x.n < y.n ? -1 : 1)),
+      name: (x, y) => x.n.replace(/^\d{4}\s*/, '') < y.n.replace(/^\d{4}\s*/, '') ? -1 : 1,
+    };
+    cards.sort(SORTS[sort] || byDate);
+    const ranked = ['price', 'value', 'gain', 'steal'].includes(sort);
+    const grouped = sort === 'year' || sort === 'yearold';
     const worthTxt = x => x.v == null ? '' : ` ▸ <b style="color:${x.v >= x.p ? '#2e7d32' : '#c62828'}">${money(x.v)}</b>`;
     const valued = cards.filter(x => x.v != null);
     const FLAG = {R: ['RC', '#fb8c00'], A: ['AUTO', '#00897b'], L: ['RELIC', '#00897b'], N: ['#’d', '#8e24aa'], G: ['GRADED', '#546e7a'], F: ['FRONT', '#f9a825'], D: ['DUPE', '#6d4c41']};
     const flags = x => [...x.f].map(f => `<span class="flag" style="background:${FLAG[f][1]}">${FLAG[f][0]}</span>`).join('');
+    const findOf = x => (x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase();
+    const sel = (key, val, opts) => `<select data-do="set" data-key="${key}" style="margin:0 6px 6px 0">${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    // year headers span the whole wall; their data-find holds every card under them so search keeps them in step
+    const groups = [];
+    for (const x of cards) {
+      const k = grouped ? yearOf(x) : '';
+      if (!groups.length || groups[groups.length - 1].k !== k) groups.push({k, cards: []});
+      groups[groups.length - 1].cards.push(x);
+    }
+    let n = 0;
+    const head = g => !grouped ? '' : `<div class="${wall ? 'pk-year' : 'line pk-year-list'}" data-find="${esc(g.cards.map(findOf).join(' | '))}"><b>${esc(g.k)}</b><span class="muted">${g.cards.length} card${g.cards.length === 1 ? '' : 's'} · ${money(g.cards.reduce((t, x) => t + x.p, 0))} paid${g.cards.some(x => x.v != null) ? ' · worth ' + money(g.cards.reduce((t, x) => t + (x.v ?? x.p), 0)) : ''}</span></div>`;
+    const listRow = (x, i) => `<div class="line" data-find="${esc(findOf(x))}" style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;align-items:center">
+      ${ranked ? `<span class="rank">${i + 1}</span>` : ''}${x.i ? `<img src="${esc(x.i)}" loading="lazy" alt="" style="width:34px;height:47px;object-fit:cover;border-radius:4px;flex:none">` : ''}
+      <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}${x.vn ? ' · ' + x.vn + ' sale' + (x.vn === 1 ? '' : 's') : ''}</span></span><span style="flex:none;text-align:right"><b>${x.p ? money(x.p) : ''}</b>${worthTxt(x)}</span></div>`;
+    const body = groups.map(g => head(g) + g.cards.map(x => { const i = n++; return wall ? pocket(x, i, ranked ? i + 1 : null) : listRow(x, i); }).join('')).join('');
     return `<div style="padding-top:10px">
     <input data-search type="search" placeholder="Search ${total} cards: set, year, parallel, seller…" value="${esc(c.card.query)}">` +
-    chips('status', 'all', [['all', 'All'], ['In binder', 'In binder'], ['Delivered', 'To file'], ['In transit', 'In transit'], ['flag', 'Hits'], ['dupe', 'Dupes']]) +
-    chips('cardsort', 'new', [['new', 'Newest'], ['price', 'Priciest'], ['value', 'Worth most'], ['steal', 'Best buys'], ['year', 'By year']]) +
-    `<div class="muted" style="font-size:12px;margin:10px 0 2px"><span data-found>${cards.length}</span> cards · ${money(cards.reduce((t, x) => t + x.p, 0))} paid${valued.length ? ` · ${valued.length} priced by the ledger at <b style="color:var(--primary-text-color)">${money(valued.reduce((t, x) => t + x.v, 0))}</b> (paid ${money(valued.reduce((t, x) => t + x.p, 0))})` : ''}</div>` +
-    cards.map(x => `<div class="line" data-find="${esc((x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase())}" style="display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px">
-      <span style="min-width:0">${esc(x.n)}<br><span class="muted" style="font-size:11px">${flags(x)}${esc(x.s)} · ${esc(x.pg)}${x.d ? ' · ' + esc(x.d) : ''}${x.sl ? ' · ' + esc(x.sl) : ''}${x.vn ? ' · ' + x.vn + ' sale' + (x.vn === 1 ? '' : 's') : ''}</span></span><span style="flex:none;text-align:right"><b>${x.p ? money(x.p) : ''}</b>${worthTxt(x)}</span></div>`).join('') + `</div>`;
+    `<div class="row" style="align-items:center;margin-top:8px">` +
+      sel('cardsort', sort, [['new', '🆕 Newest buys'], ['value', '💎 Worth most'], ['price', '💳 Priciest paid'], ['gain', '📈 Biggest gain (×)'], ['steal', '🏷️ Best buys (% of worth)'], ['year', '📅 Year, newest first'], ['yearold', '📅 Year, oldest first'], ['name', '🔤 Set A–Z']]) +
+      sel('binder_year', year, [['all', 'Every year'], ...years.map(y => [y, y])]) +
+      sel('binder_kind', kind, [['all', 'Every kind'], ...Object.entries(KINDS).map(([k, [l]]) => [k, l])]) +
+      sel('status', status, [['all', 'Anywhere'], ['In binder', 'In the binder'], ['Delivered', 'To file'], ['In transit', 'In transit'], ['Won', 'Won, not shipped'], ['flag', 'Hits']]) +
+    `</div>` +
+    (c.cards.some(x => x.i) ? chips('binder_view', 'wall', [['wall', '🖼️ Binder wall'], ['list', '☰ List']]) : '') +
+    `<div class="muted" style="font-size:12px;margin:10px 0 2px"><span data-found>${cards.length}</span> of ${total} cards · ${money(cards.reduce((t, x) => t + x.p, 0))} paid${valued.length ? ` · ${valued.length} priced by the ledger at <b style="color:var(--primary-text-color)">${money(valued.reduce((t, x) => t + x.v, 0))}</b> (paid ${money(valued.reduce((t, x) => t + x.p, 0))})` : ''}${(kind !== 'all' || year !== 'all' || status !== 'all') ? ' · ' + setBtn('✕ Clear filters', 'binder_reset', String(Date.now()), '#546e7a') : ''}</div>` +
+    (cards.length ? (wall ? `<div class="binder">${body}</div>` : body) : empty('No cards match these filters.')) + `</div>`;
   }],
 
   todo: ['To do', true, c => {
@@ -2144,6 +2209,36 @@ const STYLE = `
   .tile.hot { border-color: #e53935; box-shadow: 0 0 0 1px #e5393588; }
   .tile.jp { border-color: #d50000; animation: jackpot-pulse 1.6s ease-out infinite; }
   .tile-img { position: relative; display: block; height: 0; padding-top: 80%; background: #0003; overflow: hidden; }
+  .binder { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 12px; margin-top: 10px; padding: 14px;
+            border-radius: 14px; background: color-mix(in srgb, var(--primary-text-color) 5%, transparent);
+            box-shadow: inset 0 0 0 1px var(--divider-color); }
+  .pocket { display: flex; flex-direction: column; min-width: 0; text-decoration: none; color: var(--primary-text-color);
+            border-radius: 10px; padding: 6px; background: color-mix(in srgb, var(--card-background-color) 85%, var(--primary-text-color) 4%);
+            box-shadow: 0 0 0 2px var(--ring, transparent), 0 2px 6px #0003; transition: transform .15s ease, box-shadow .15s ease; }
+  .pocket:hover { transform: translateY(-3px) rotate(-.6deg); box-shadow: 0 0 0 2px var(--ring, var(--primary-color)), 0 8px 18px #0005; }
+  .pk-img { position: relative; aspect-ratio: 5 / 7; border-radius: 6px; overflow: hidden; background: #0002; }
+  .pk-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .pk-img::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+                   background: linear-gradient(115deg, #ffffff38 0%, #ffffff08 28%, transparent 40%, transparent 70%, #ffffff12 100%); }
+  .pk-none { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 8px;
+             text-align: center; font-size: 30px; }
+  .pk-none span { font-size: 10px; line-height: 1.25; color: var(--secondary-text-color); }
+  .pk-flags { position: absolute; left: 4px; top: 4px; display: flex; flex-wrap: wrap; gap: 2px; z-index: 1; }
+  .pk-flags .flag { margin: 0; box-shadow: 0 1px 3px #0006; }
+  .pk-where, .pk-same { position: absolute; right: 4px; top: 4px; z-index: 1; font-size: 13px; line-height: 20px; min-width: 20px; text-align: center;
+                        border-radius: 10px; background: #000a; color: #fff; }
+  .pk-same { top: auto; bottom: 4px; font-weight: 800; }
+  .pk-gain { position: absolute; left: 4px; bottom: 4px; z-index: 1; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 800;
+             background: #2e7d32; color: #fff; box-shadow: 0 1px 3px #0006; }
+  .pk-cap { padding: 6px 2px 0; display: flex; flex-direction: column; gap: 2px; }
+  .pk-name { font-size: 11px; line-height: 1.25; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .pk-rank { font-weight: 800; color: var(--primary-color); }
+  .pk-year { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 0; font-size: 20px; }
+  .pk-year:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--divider-color); padding-top: 12px; }
+  .pk-year .muted, .pk-year-list .muted { font-size: 12px; }
+  .pk-year-list { display: flex; align-items: baseline; gap: 10px; padding: 12px 0 4px; font-size: 16px; }
+  .pk-money { font-size: 12px; color: var(--secondary-text-color); }
+  @media (max-width: 500px) { .binder { grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; } .pk-name { font-size: 10px; } }
   .tile-img img, .tile-img .noimg { position: absolute; inset: 0; width: 100%; height: 100%; }
   .tile-img img { object-fit: contain; display: block; }
   .tile-img .noimg { display: flex; align-items: center; justify-content: center; font-size: 40px; }
@@ -2584,7 +2679,10 @@ class SnipeHuntStrategy {
         section(heading('Incoming', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('incoming')),
         section(heading("What's missing", 'mdi:star-box-multiple'), panel('missing')),
         {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
-        section(heading('Every card', 'mdi:magnify'), panel('binder'), heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
+        section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
+      ]},
+      binder: {title: 'Binder', path: 'binder', icon: 'mdi:view-grid', sections: [
+        {...section(heading('The binder', 'mdi:view-grid'), panel('binder')), column_span: 3},
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
@@ -2619,6 +2717,7 @@ class SnipeHuntStrategy {
     // Learn came after the tabs option: it shows even when saved tabs predate it.
     if (!upgraded.includes('learn')) upgraded.push('learn');
     if (!upgraded.includes('catalog')) upgraded.push('catalog');
+    if (!upgraded.includes('binder')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'binder');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
