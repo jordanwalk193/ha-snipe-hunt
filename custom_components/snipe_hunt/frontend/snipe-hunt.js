@@ -97,6 +97,27 @@ const stat = (label, value, color, icon) => `<div class="stat" style="background
 const grid = (cols, cells) => `<div class="grid" style="grid-template-columns:repeat(${cols},1fr)">${cells.join('')}</div>`;
 const tint = color => color ? `background:${color};color:#fff` : '';
 const linkBtn = (label, url, color) => `<a class="btn" href="${esc(url)}" target="_blank" rel="noopener" style="${tint(color)}">${label}</a>`;
+// One tap to snipe: copies the item # and opens Gixen. With a max, the button
+// then turns into "Copy max", so the second paste is one more tap on return.
+const snipeBtn = (id, max, label = '🎯 Snipe ↗', color = '#6a1b9a') => `<span class="btn snipe-go" role="button" data-do="snipe" data-text="${esc(id)}"${max == null ? '' : ` data-max="${esc(cents(max))}"`} style="${tint(color)}" title="Copies item # ${esc(id)} and opens Gixen">${label}</span>`;
+// Copies text inside the tap itself (no await before it), so phone browsers
+// and the companion app allow it; the textarea route covers plain-http pages.
+const copyText = text => {
+  const legacy = () => {
+    const t = document.createElement('textarea');
+    t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = 0;
+    document.body.appendChild(t); t.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { /* nothing else to try */ }
+    t.remove();
+    return ok;
+  };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch(legacy);
+    return true;
+  }
+  return legacy();
+};
 const copyBtn = (label, text) => `<span class="btn" role="button" data-do="copy" data-text="${esc(text)}">${label}</span>`;
 // A button that asks the bot to do something. `confirm` makes it a two-tap
 // button; `hide` removes the row it sits in straight away.
@@ -261,7 +282,7 @@ const pocket = (x, n = 0, rank = null) => {
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
-    ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + (p.snipe == null && !p.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(p) + binBtn(p)
+    ? (p.snipe == null && !p.marked ? snipeBtn(p.item_id, p.max) : copyBtn('Copy item #', p.item_id)) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
   ${p.feedback === 'good_pick' ? pill('👍 Good call noted', '#43a047') : act('👍 Good call', {action: 'feedback', item_id: p.item_id, reason: 'good_pick'}, {busy: 'Saving…'})}
@@ -334,7 +355,7 @@ const jackpotBanner = c => {
         <div style="font-size:16px"><b>${money(jackpotPay(p))}</b> delivered for a <b>${worth(p.value)}</b> card${off != null ? ` · <b>${off}% off</b>` : ''}</div>
         <div style="font-size:13px;margin-top:3px;opacity:.9">${p.jackpot === 'sales' ? 'Value from recorded sales.' : 'Value is the bot\'s estimate: glance at the comps as you buy.'} You will not see it this cheap again.</div>
         <div class="row tight" style="margin-top:8px">${p.is_auction && !p.jackpot_bin
-          ? copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
+          ? snipeBtn(p.item_id, p.max, '🎯 SNIPE ↗') + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max)))
           : linkBtn(p.best_offer ? 'Buy now (has offers) ↗' : 'BUY NOW ↗', p.url, '#ffffff')}</div>
       </div></div>`;
   }).join('');
@@ -403,9 +424,9 @@ const takeoverHtml = (p, n, i) => {
     p.ledger_only ? 'Found by the price ledger, not scored by Claude: check the photos and the seller.' : '',
     p.owned ? 'You already have this card: grab it to flip or trade.' : ''].filter(Boolean).map(t => `<div class="tk-note">${esc(t)}</div>`).join('');
   const act = p.is_auction && !p.jackpot_bin
-    ? `<span class="tk-btn big" data-tk="copy" data-v="${esc(p.item_id)}">Copy item # ${esc(p.item_id)}</span>` +
+    ? `<span class="tk-btn big" data-tk="snipe" data-v="${esc(p.item_id)}"${p.max != null ? ` data-max="${esc(cents(p.max))}"` : ''}>🎯 SNIPE ${esc(p.item_id)} ↗</span>` +
       (p.max != null ? `<span class="tk-btn" data-tk="copy" data-v="${esc(cents(p.max))}">Copy max ${esc(cents(p.max))}</span>` : '') +
-      `<span class="tk-btn" data-tk="open" data-v="${esc(GIXEN_URL)}">Gixen ↗</span><span class="tk-btn" data-tk="open" data-v="${esc(p.url)}">eBay ↗</span>`
+      `<span class="tk-btn" data-tk="open" data-v="${esc(p.url)}">eBay ↗</span>`
     : `<span class="tk-btn big" data-tk="open" data-v="${esc(p.url)}">${p.best_offer ? 'BUY IT NOW (has offers) ↗' : 'BUY IT NOW ↗'}</span>`;
   return `<div class="tk-back"><div class="tk${mega ? ' mega' : ''}" role="alertdialog" aria-label="Jackpot">
     <div class="tk-head">${mega ? '🚨 HOLY SH*T 🚨' : '🚨 JACKPOT 🚨'}</div>
@@ -445,8 +466,12 @@ const takeover = c => {
     const what = t.dataset.tk;
     if (what === 'open') window.open(t.dataset.v, '_blank', 'noopener');
     else if (what === 'copy') {
-      const done = () => { t.textContent = 'Copied ✓'; };
-      if (navigator.clipboard) navigator.clipboard.writeText(t.dataset.v).then(done, done); else done();
+      copyText(t.dataset.v);
+      t.textContent = 'Copied ✓';
+    } else if (what === 'snipe') {
+      copyText(t.dataset.v);
+      window.open(GIXEN_URL, '_blank', 'noopener');
+      t.textContent = '✓ Item # copied: paste it in Gixen';
     } else if (what === 'seen') { setDismissed(t.dataset.v, true); takeoverKey = null; takeover(takeoverCtx); }
     else if (what === 'next') { takeoverIndex += 1; takeoverKey = null; takeover(takeoverCtx); }
     else if (what === 'reopen') { live.forEach(p => setDismissed(p.item_id, false)); takeoverIndex = 0; takeoverKey = null; takeover(takeoverCtx); }
@@ -594,7 +619,7 @@ const bidNowList = c => {
       <div style="flex:1;min-width:0">
         <a class="title" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.card)}</a>
         <div style="font-size:13px;margin-top:2px"><b>${money(p.pay)}</b> delivered for a <b>${worth(p.value)}</b> card · <b>${p.off_pct}% off</b> · ends ${left(p.end_time)}</div>
-        <div class="row tight">${copyBtn('Copy item #', p.item_id)}${p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}${linkBtn('View ↗', p.url, '#1e88e5')}</div>
+        <div class="row tight">${snipeBtn(p.item_id, p.max)}${p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))}${linkBtn('View ↗', p.url, '#1e88e5')}</div>
       </div></div>`).join('') + `</div>`;
 };
 // The steal radar (the bot's steals.radar): listings nearest a jackpot or bid-now line.
@@ -738,7 +763,7 @@ const snipeRow = s => {
     ${snipeCheck(s)}
     ${snipeDoubts(s)}
     <div class="muted" style="font-size:11px;margin-top:2px">${esc(s.seller)} · ${s.outbid ? 'ends in ' + left(s.end_time) : 'ends ' + when(s.end_time)} · ${esc(s.item_id)}</div>
-    ${s.outbid ? `<div class="row tight">${copyBtn('Copy item #', s.item_id)}${s.bot_max != null && Number(s.bot_max) > Number(s.current_bid) ? copyBtn('Copy bot max ' + cents(s.bot_max), cents(s.bot_max)) : ''}${s.check && s.check.room && s.check.win != null && Number(s.check.win) > Number(s.current_bid) ? copyBtn('Copy win ' + cents(s.check.win), cents(s.check.win)) : ''}${linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')}</div>` : ''}
+    ${s.outbid ? `<div class="row tight">${s.bot_max != null && Number(s.bot_max) > Number(s.current_bid) ? copyBtn('Copy bot max ' + cents(s.bot_max), cents(s.bot_max)) : ''}${s.check && s.check.room && s.check.win != null && Number(s.check.win) > Number(s.current_bid) ? copyBtn('Copy win ' + cents(s.check.win), cents(s.check.win)) : ''}${snipeBtn(s.item_id, s.check && s.check.room && s.check.win != null && Number(s.check.win) > Number(s.current_bid) ? s.check.win : null, '🎯 Re-snipe ↗')}</div>` : ''}
   </div>`;
 };
 const gixenDown = c => c.gixenOff
@@ -868,7 +893,7 @@ const tile = p => {
   const edgeColor = p.jackpot ? '#d50000' : (TIER[p.tier] || ['', '#546e7a'])[1];
   const hot = p.jackpot ? ' jp' : (ms != null && ms < HOUR ? ' hot' : '');
   const buttons = p.is_auction
-    ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + copyBtn('Item #', p.item_id) + (p.snipe == null && !p.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(p) + binBtn(p)
+    ? copyBtn('Copy max ' + (p.max == null ? '' : cents(p.max)), p.max == null ? '' : cents(p.max)) + (p.snipe == null && !p.marked ? snipeBtn(p.item_id, p.max) : copyBtn('Item #', p.item_id)) + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Buy / offer ↗' : 'Buy now ↗', p.url, '#1e88e5') + copyBtn('Item #', p.item_id);
   return `<div class="tile${hot}" data-row data-find="${findKey(p)}" style="border-top-color:${edgeColor}">
     <a class="tile-img" href="${esc(p.url)}" target="_blank" rel="noopener">
@@ -1008,7 +1033,7 @@ const PANELS = {
           <a class="hero-title" href="${esc(next.url)}" target="_blank" rel="noopener">${(TIER[next.tier] || [''])[0]} ${esc(next.card)}</a>
           <div style="font-size:13px"><b style="font-size:16px">${money(payNow(next))}</b> <span class="muted">now w/ ship</span>${next.max != null ? ` · max <b>${cents(next.max)}</b>` : ''} · worth ~<b>${worth(next.value)}</b>${shareNow(next) == null ? '' : shareNow(next) < 1 ? ` · <b style="color:#69f0ae">${Math.round(100 * (1 - shareNow(next)))}% off</b>` : ' · <b style="color:#ff8a80">over its value now</b>'}${next.bids != null ? ` · ${next.bids} bid${next.bids === 1 ? '' : 's'}` : ''}</div>
           <div class="muted" style="font-size:12px;margin-top:3px">ends ${when(next.end_time)} · ${esc(next.seller)}${closesPill(next, true) ? '' : ''}</div>
-          <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${copyBtn('Item #', next.item_id)}${noGixen ? linkBtn('Bid on eBay ↗', next.url, '#1e88e5') : (next.snipe == null && !next.marked ? linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') : '') + markBtn(next)}${binBtn(next)}</div>
+          <div class="row tight">${next.max != null ? copyBtn('Copy max ' + cents(next.max), cents(next.max)) : ''}${noGixen ? copyBtn('Item #', next.item_id) + linkBtn('Bid on eBay ↗', next.url, '#1e88e5') : (next.snipe == null && !next.marked ? snipeBtn(next.item_id, next.max) : copyBtn('Item #', next.item_id)) + markBtn(next)}${binBtn(next)}</div>
         </div>
         <div class="hero-clock" style="color:${clockColor(msLeft(next.end_time))}"><span data-end="${esc(next.end_time)}" data-big>${bigClock(msLeft(next.end_time))}</span><small>LEFT</small></div>
       </div>`;
@@ -1066,8 +1091,8 @@ const PANELS = {
       const yours = r.mine ?? r.botMax;
       const off = r.value && yours != null ? Math.round(100 * (1 - (Number(yours) + r.ship) / Number(r.value))) : null;
       const offColor = off == null ? '' : off >= 50 ? '#2e7d32' : off >= 25 ? '#f9a825' : off >= 0 ? 'var(--secondary-text-color)' : '#e53935';
-      const btn = r.state === 'need' ? (r.botMax != null ? copyBtn('Max ' + cents(r.botMax), cents(r.botMax)) : '') + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
-        : r.state === 'outbid' && r.win != null && Number(r.win) > r.now ? copyBtn('Win ' + cents(r.win), cents(r.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')
+      const btn = r.state === 'need' ? snipeBtn(r.id, r.botMax, '🎯 Snipe') + (r.botMax != null ? copyBtn('Max ' + cents(r.botMax), cents(r.botMax)) : '')
+        : r.state === 'outbid' && r.win != null && Number(r.win) > r.now ? snipeBtn(r.id, r.win, '🎯 Re-snipe') + copyBtn('Win ' + cents(r.win), cents(r.win))
         : r.state === 'check' ? linkBtn('Gixen ↗', GIXEN_URL, '#ff6d00') : '';
       return `<div class="brow${ms < HOUR ? ' soon' : ''}${r.state === 'need' ? ' need' : ''}" data-row data-find="${esc((r.title + ' ' + r.seller + ' ' + r.id).toLowerCase())}">
         <div class="bclock" data-end="${esc(r.end)}" data-text style="color:${clockColor(ms)}">${clockTxt(ms)}</div>
@@ -2228,12 +2253,12 @@ const PANELS = {
     const needIds = new Set(c.need.map(p => p.item_id));
     c.need.forEach(p => items.push(row('🎯 Snipe', '#6a1b9a', {item: p, at: p.end_time, url: p.url, title: (TIER[p.tier] || [''])[0] + ' ' + p.card,
       line: `now ${money(p.bid_now ?? p.price)} + ${shipTxt(p)}${p.max != null ? ` · <b style="color:var(--primary-text-color)">max ${cents(p.max)}</b>` : ''}${p.deal ? ' · ' + deal(p) : ''}`,
-      buttons: copyBtn('Copy item #', p.item_id) + (p.max == null ? '' : copyBtn('Copy ' + cents(p.max), cents(p.max))) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a') + act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})})));
+      buttons: snipeBtn(p.item_id, p.max) + (p.max == null ? '' : copyBtn('Copy ' + cents(p.max), cents(p.max))) + act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})})));
     const lb = ((c.d.lowball || {}).targets || []).filter(t => !t.sniped && !needIds.has(t.item_id) && msLeft(t.end_time) > 0 && msLeft(t.end_time) < c.windowMs);
     const LOWBALL_MAX = 8;
     lb.slice().sort((x, y) => x.share - y.share).slice(0, LOWBALL_MAX).forEach(t => items.push(row('🐟 Lowball', '#00838f', {item: t, at: t.end_time, url: t.url, title: t.title,
       line: `now ${money(t.price)} + ${shipTxt(t)} · ${t.bids} bid${t.bids === 1 ? '' : 's'} · goes for ~${money(t.value)} · <b style="color:var(--primary-text-color)">snipe ${cents(t.snipe)}</b>${t.dead ? ' · 🌙 ' + esc(t.dead) : ''}`,
-      buttons: copyBtn('Copy item #', t.item_id) + copyBtn('Copy ' + cents(t.snipe), cents(t.snipe)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
+      buttons: snipeBtn(t.item_id, t.snipe) + copyBtn('Copy ' + cents(t.snipe), cents(t.snipe))})));
     // only what could cost you: the wrong card, one you own, a double, a bad slab, overpaying
     const serious = x => (x.doubts || []).filter(d => SERIOUS_DOUBT.includes(d.kind));
     c.snipes.filter(x => !x.outbid && (serious(x).length || costly(x))).forEach(x => items.push(row('⚠️ Check snipe', '#e53935', {at: x.end_time, url: x.url, title: x.title || x.item_id,
@@ -2241,7 +2266,7 @@ const PANELS = {
       buttons: linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
     c.snipes.filter(x => x.outbid && x.check && x.check.room && x.check.win != null && Number(x.check.win) > Number(x.current_bid)).forEach(x => items.push(row('📈 Outbid, still cheap', '#fb8c00', {at: x.end_time, url: x.url, title: x.title || x.item_id,
       line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · to win ≈ ${cents(x.check.win)}`,
-      buttons: copyBtn('Copy item #', x.item_id) + copyBtn('Copy ' + cents(x.check.win), cents(x.check.win)) + linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
+      buttons: snipeBtn(x.item_id, x.check.win, '🎯 Re-snipe ↗') + copyBtn('Copy ' + cents(x.check.win), cents(x.check.win))})));
     const payPic = g => { const x = (g.ids || []).map(i => c.art.get(String(i))).find(y => y && y.i); return x ? {url: x.e ? 'https://www.ebay.com/itm/' + x.e : 'https://www.ebay.com/mye/myebay/purchase', image: x.i} : null; };
     (c.d.pipeline.unpaid || []).filter(g => /^pay/i.test(g.advice)).forEach(g => items.push(row('💳 Pay', '#1e88e5', {item: payPic(g), title: g.seller + ' · ' + money(g.total) + ((g.count || 0) > 1 ? ' · ' + g.count + ' cards' : ''),
       line: esc(g.advice), buttons: linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')})));
@@ -2808,6 +2833,7 @@ class SnipeHuntCard extends HTMLElement {
     if (!el) return;
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
+    if (el.dataset.do === 'snipe') return this.snipe(el);
     if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value));
     if (el.dataset.do === 'nav') {
       const base = location.pathname.split('/').slice(0, 2).join('/');
@@ -2857,17 +2883,34 @@ class SnipeHuntCard extends HTMLElement {
   who() { return this.feed && this.feed.entry ? {entry: this.feed.entry} : {}; }
 
   copy(el) {
-    const text = el.dataset.text;
-    const done = () => { const old = el.textContent; el.textContent = 'Copied ✓'; setTimeout(() => { if (el.isConnected) el.textContent = old; }, 1300); };
-    const fallback = () => {
-      const t = document.createElement('textarea');
-      t.value = text; t.style.position = 'fixed'; t.style.opacity = 0;
-      document.body.appendChild(t); t.select();
-      try { document.execCommand('copy'); } catch (e) { /* nothing else to try */ }
-      t.remove(); done();
-    };
-    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
-    else fallback();
+    copyText(el.dataset.text);
+    const old = el.textContent;
+    el.textContent = 'Copied ✓';
+    setTimeout(() => { if (el.isConnected) el.textContent = old; }, 1300);
+  }
+
+  // First tap: item # to the clipboard and Gixen opens in a new tab. If there is
+  // a max, the same button then copies it, for the second box on Gixen's form.
+  snipe(el) {
+    if (el.dataset.stage === 'max') {
+      copyText(el.dataset.max);
+      el.textContent = 'Max copied ✓';
+      delete el.dataset.stage;
+      setTimeout(() => { if (el.isConnected) el.textContent = el.dataset.label; }, 2500);
+      return;
+    }
+    copyText(el.dataset.text);
+    window.open(GIXEN_URL, '_blank', 'noopener');
+    el.dataset.label = el.dataset.label || el.textContent;
+    if (el.dataset.max) {
+      el.dataset.stage = 'max';
+      el.textContent = 'Copy max ' + el.dataset.max;
+      this.toast(`Item # ${el.dataset.text} copied: paste it in Gixen. Your max is $${el.dataset.max}; tap the button again to copy it.`);
+    } else {
+      el.textContent = 'Item # copied ✓';
+      this.toast(`Item # ${el.dataset.text} copied: paste it in Gixen.`);
+      setTimeout(() => { if (el.isConnected) el.textContent = el.dataset.label; }, 2500);
+    }
   }
 }
 window.customCards = window.customCards || [];
