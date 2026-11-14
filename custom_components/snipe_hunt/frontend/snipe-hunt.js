@@ -1074,6 +1074,84 @@ const lineChart = (c, pts, {color, fmt = v => String(Math.round(v)), ref = null,
 const clockTime = iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 const dayWord = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], {weekday: 'short'}); };
 
+// ---- Binder pages (the bot's binder_pages): sections of 3x3 pages, pocket by pocket ----
+const spotFor = (c, id) => ((c.d.binder_pages || {}).to_file || []).find(e => String(e.id) === String(id));
+const spotTxt = (sp, titles, same) => !sp ? 'not in the binder'
+  : (same === sp[0] ? '' : (titles[sp[0]] || sp[0]) + ' ') + 'p' + sp[1] + ' #' + sp[2];
+const pagesFrom = (layout, key) => {
+  const g = [];
+  Object.entries(layout).forEach(([id, sp]) => { if (sp[0] !== key) return;
+    while (g.length < sp[1]) g.push(Array(9).fill(null));
+    g[sp[1] - 1][sp[2] - 1] = id; });
+  return g;
+};
+const trimPages = g => { let n = g.length; while (n > 1 && !g[n - 1].some(Boolean)) n--; return g.slice(0, n); };
+const sectionHead = (s, counts) => {
+  const end = s.start + s.pages - 1;
+  const chipsHtml = !counts ? '' : [
+    s.over ? pill(`over by ${s.over}`, '#e53935') : (s.full ? pill('full', '#e53935') : (s.nearly_full ? pill(`${s.free} pockets left`, '#fb8c00') : '')),
+  ].join('');
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:16px;flex-wrap:wrap">
+    <b style="font-size:15px">${esc(s.title)}</b>
+    <span class="muted" style="font-size:12px">${counts ? s.used + ' of ' + s.pages * 9 + ' pockets · ' : ''}${s.pages === 1 ? 'binder page ' + s.start : 'binder pages ' + s.start + '–' + end} ${chipsHtml}</span></div>`;
+};
+const pageGrids = (c, s, g, hot = new Set()) => `<div class="bp-pages">` + g.map((page, pi) =>
+  `<div class="bp-page"><div class="bp-label">${pi === 0 && s.key !== 'front' ? '⭐ ' : ''}p${pi + 1}${pi === 0 && s.key !== 'front' ? ' · showcase' : ''}${pi + 1 > s.pages ? ' · over' : ''}</div><div class="bp-grid">` +
+  page.map((id, ki) => {
+    const isHot = !id && hot.has([s.key, pi + 1, ki + 1].join('|'));   // an empty pocket a waiting card goes into
+    if (!id) return `<div class="bp-pk empty${isHot ? ' hot' : ''}"></div>`;
+    const x = c.art.get(String(id)) || {id, n: '#' + id, f: ''};
+    const flip = (x.f || '').includes('D');
+    const inner = x.i ? `<img src="${esc(x.i)}" loading="lazy" alt="" data-do="card" data-value="${esc(x.id)}" role="button" title="${esc(x.n)}">`
+      : `<div class="bp-none" data-do="card" data-value="${esc(x.id)}" role="button">${esc(x.n)}</div>`;
+    return `<div class="bp-pk${flip ? ' flip' : ''}">${inner}${flip ? '<span class="bp-tag">↩ back</span>' : ''}</div>`;
+  }).join('') + `</div></div>`).join('') + `</div>`;
+const REASON = {'move it': ['move it', '#1e88e5'], 'take it out': ['take it out', '#6d4c41'], 'needs a spot': ['needs a spot', '#8e24aa'],
+  'section full': ['section full', '#e53935'], 'after its twin': ['flip it behind its twin', '#546e7a']};
+// Plan entries in binder order (take-outs first), so filing goes section by section.
+const toFileSorted = (b, preview) => {
+  const order = Object.fromEntries((b.sections || []).map((s, i) => [s.key, i]));
+  const pos = e => e.reason === 'take it out' ? [-1, 0, 0] : (e.to ? [order[e.to[0]] ?? 99, e.to[1], e.to[2]] : [100, 0, 0]);
+  return (b.to_file || []).filter(e => !!e.preview === preview)
+    .sort((x, y) => { const a = pos(x), z = pos(y); return a[0] - z[0] || a[1] - z[1] || a[2] - z[2]; });
+};
+const fileBtn = (c, e) => {
+  if (!e) return '';
+  if (e.reason === 'take it out') return act('Taken out', {action: 'binder_clear', ids: [e.id]}, {hide: true});
+  if (!e.to) return '';
+  if (e.preview) return act('Got it, in binder', {action: 'arrived', ids: [e.id], binder: true, spots: [e]}, {hide: true});
+  return act(e.reason === 'move it' ? 'Moved' : 'Filed', {action: 'filed', ids: [e.id], spots: [e]}, {hide: true, color: '#43a047'});
+};
+// "slide p1 #4–8 over one, p1 #9 → p2 #2": cards that shift along the same page read as one slide.
+const movesTxt = (moves, titles, sec) => {
+  const out = [];
+  const sorted = moves.slice().sort((a, b) => a.from[1] - b.from[1] || a.from[2] - b.from[2]);
+  for (let i = 0; i < sorted.length;) {
+    const m = sorted[i], same = x => x.from[0] === x.to[0] && x.from[1] === x.to[1];
+    const step = same(m) ? m.to[2] - m.from[2] : null;
+    let j = i + 1;
+    while (step && j < sorted.length && same(sorted[j]) && sorted[j].from[1] === m.from[1]
+           && sorted[j].to[2] - sorted[j].from[2] === step && sorted[j].from[2] === sorted[j - 1].from[2] + 1) j++;
+    if (step && j - i > 1) out.push(`slide ${esc(spotTxt(m.from, titles, sec))}–${sorted[j - 1].from[2]} over ${step === 1 ? 'one' : step}`);
+    else out.push(`move ${esc(spotTxt(m.from, titles, sec))} → ${esc(spotTxt(m.to, titles, sec))}`);
+    i = j;
+  }
+  return out.join(', ');
+};
+const fileRow = (c, e, titles) => {
+  const x = c.art.get(String(e.id)) || {id: e.id, n: '#' + e.id, f: ''};
+  const sec = e.to ? e.to[0] : null;
+  const where = e.to ? pill('→ ' + esc(spotTxt(e.to, titles)), '#43a047') : '';
+  const why = REASON[e.reason] ? pill(REASON[e.reason][0], REASON[e.reason][1]) : '';
+  const from = e.from ? `from ${esc(spotTxt(e.from, titles))}` : '';
+  const twin = e.reason === 'after its twin' ? `file #${esc(e.twin)} first, this one goes flipped right after it` : '';
+  const moves = (e.moves || []).length ? 'then ' + movesTxt(e.moves, titles, sec) : '';
+  const note = [from, twin, moves].filter(Boolean).join(' · ');
+  return `<div data-row class="line bp-row"${e.preview ? ' style="opacity:.7"' : ''}>${cardPic(x, 40, 56)}
+    <span style="flex:1;min-width:0">${esc(x.n)}<br><span class="row tight" style="margin:2px 0 0">${where}${why}</span>
+      ${note ? `<div class="bp-moves">${note}</div>` : ''}</span>${fileBtn(c, e)}</div>`;
+};
+
 const PANELS = {
   hero: ['Command center', true, c => {
     // The top of Tonight: who the bot is hunting, the numbers that matter, the
@@ -2260,7 +2338,53 @@ const PANELS = {
     (a.priciest || []).map(r => `<div class="line" style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:13px">${ownThumb(c, r.id)}<span style="flex:1;min-width:0">${esc(r.card)}</span><b>${money(r.paid)}</b></div>`).join('') + `</div>`;
   }],
 
+  pages: ['Binder pages', false, c => {
+    const b = c.d.binder_pages;
+    if (!b) return empty("This bot doesn't lay out binder pages.");
+    const titles = Object.fromEntries((b.sections || []).map(s => [s.key, s.title]));
+    if (b.setup) {
+      const layout = b.setup_layout || {};
+      const secs = (b.sections || []).map(s => [s, pagesFrom(layout, s.key)]).filter(([, g]) => g.length);
+      return `<div class="muted" style="font-size:13px;padding:10px 0 4px">🗂️ <b>Set up your binder.</b> This is the new layout for the
+        ${Object.keys(layout).length} cards already in it: the best card of each section first, page by page, pocket by pocket
+        (left to right, top to bottom). Move the cards to match, then tap Done. Filing new cards starts after that.</div>` +
+        `<div class="bp-secs">` + secs.map(([s, g]) => `<div class="bp-sec">` + sectionHead(s, false) + pageGrids(c, s, g) + `</div>`).join('') + `</div>` +
+        `<div class="row" style="margin-top:14px">${act('✅ Done, my binder looks like this', {action: 'binder_setup', layout},
+          {color: '#43a047', confirm: 'Tap again to save this layout', busy: 'Saving…'})}</div>`;
+    }
+    const open = store('resort_open', '');
+    const waiting = toFileSorted(b, false), coming = toFileSorted(b, true);
+    const hot = new Set(waiting.filter(e => e.to).map(e => e.to.join('|')));
+    const toFile = waiting.length ? cap(`TO FILE · ${waiting.length}`) + waiting.map(e => fileRow(c, e, titles)).join('')
+      : empty('✅ Nothing to file: every card has its pocket.');
+    const later = coming.length ? `<details style="margin-top:6px"><summary class="muted" style="font-size:12px;cursor:pointer">🚚 ${coming.length} on the way: where they'll go</summary>` +
+      coming.map(e => fileRow(c, e, titles)).join('') + `</details>` : '';
+    const sections = (b.sections || []).filter(s => s.used || s.key === open).map(s => {
+      const resorting = open === s.key;
+      const g = resorting ? s.resort : trimPages(s.grid);
+      const expect = s.grid.flat().filter(Boolean);
+      const layout = {};
+      s.resort.forEach((pg, pi) => pg.forEach((id, ki) => { if (id) layout[id] = [s.key, pi + 1, ki + 1]; }));
+      const tools = resorting
+        ? `<div class="warn" style="margin-top:6px;padding:8px 10px;font-size:12px">↕️ Re-sort ${esc(s.title)}: lay the pages out like this (best first), then tap Done.</div>
+           <div class="row">${act('✅ Done, re-sorted', {action: 'binder_resort', section: s.key, layout, expect}, {color: '#43a047', busy: 'Saving…'})}${setBtn('Cancel', 'resort_open', '')}</div>`
+        : `<div class="row">${setBtn(s.resort_suggested ? '↕️ Re-sort (suggested)' : '↕️ Re-sort', 'resort_open', s.key, s.resort_suggested ? '#fb8c00' : null)}</div>`;
+      return `<div class="bp-sec">` + sectionHead(s, true) + tools + pageGrids(c, s, g, resorting ? new Set() : hot) + `</div>`;
+    }).join('');
+    return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
+  }],
+
   to_file: ['To file in the binder', false, c => {
+    const b = c.d.binder_pages;
+    if (b) {   // this bot plans every pocket: file on the Pages tab, where the moves are shown
+      if (b.setup) return empty('🗂️ Set up your binder on the Pages tab first. ' + navBtn('Open Pages', 'pages'));
+      const titles = Object.fromEntries((b.sections || []).map(s => [s.key, s.title]));
+      const waiting = toFileSorted(b, false);
+      if (!waiting.length) return empty('✅ Everything delivered is in the binder.');
+      const SHOWN = 8;
+      return waiting.slice(0, SHOWN).map(e => fileRow(c, e, titles)).join('') +
+        `<div class="row" style="padding-top:6px">${navBtn(waiting.length > SHOWN ? `All ${waiting.length} on Pages` : 'Open Pages', 'pages')}</div>`;
+    }
     const cards = c.cards.filter(x => x.s === 'Delivered');
     if (!cards.length) return empty('✅ Everything delivered is in the binder.');
     const pages = {};
@@ -2288,8 +2412,8 @@ const PANELS = {
       return col ? ' · ' + pill(n + ' days', col) : ' · ' + n + ' day' + (n === 1 ? '' : 's'); };
     // Got it: in hand, to file. In binder: already filed. (Untracked envelopes never send a delivery email.)
     const rows = list => list.map(x => `<div data-row class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${cardPic(x)}
-      <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)}${age(x)} · ${esc(x.sl)} · goes on ${esc(x.pg)}</span>
-        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${act('In binder', {action: 'arrived', ids: [x.id], binder: true}, {hide: true})}</span></span><b>${money(x.p)}</b></div>`).join('');
+      <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)}${age(x)} · ${esc(x.sl)} ${x.pg && x.pg !== 'not in the binder' ? ' · goes on ' + esc(x.pg) : ''}</span>
+        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${(() => { const e = spotFor(c, x.id); return act('In binder', {action: 'arrived', ids: [x.id], binder: true, ...(e && e.to ? {spots: [e]} : {})}, {hide: true}); })()}</span></span><b>${money(x.p)}</b></div>`).join('');
     const late = transit.filter(x => days(x) >= 21);
     const MAIL_SHOWN = 8, mailAll = store('mail_limit', 'page') === 'all';
     return `<div style="padding-top:10px">` + grid(2, [
@@ -2810,6 +2934,27 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { svg.map .dot.jp circle:last-child { animation: none; } }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
+  /* Binder pages: each page a 3x3 sheet of pockets */
+  .bp-pages { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+  .bp-page { flex: 1 1 170px; max-width: 240px; min-width: 0; }
+  .bp-label { font-size: 11px; font-weight: 700; color: var(--secondary-text-color); margin-bottom: 3px; }
+  .bp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 5px; border-radius: 8px;
+             background: color-mix(in srgb, var(--card-background-color) 80%, var(--primary-text-color) 6%); }
+  .bp-pk { position: relative; aspect-ratio: 5 / 7; border-radius: 4px; overflow: hidden; background: #0001; min-width: 0; }
+  .bp-pk img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+  .bp-secs { display: flex; flex-wrap: wrap; gap: 4px 28px; }
+  .bp-sec { flex: 0 1 auto; min-width: min(100%, 230px); max-width: 100%; }
+  .bp-sec .bp-pages { flex-wrap: wrap; }
+  .bp-sec .bp-page { flex: 0 1 220px; }
+  .bp-pk.empty { border: 1px dashed #8887; background: transparent; }
+  .bp-pk.hot { box-shadow: 0 0 0 2px #43a047; }
+  .bp-pk.flip img { filter: grayscale(.7) brightness(.85); }
+  .bp-pk .bp-tag { position: absolute; left: 2px; bottom: 2px; font-size: 9px; font-weight: 800; color: #fff;
+                   background: #000a; border-radius: 3px; padding: 0 3px; }
+  .bp-pk .bp-none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; text-align: center;
+                    padding: 2px; color: var(--secondary-text-color); cursor: pointer; }
+  .bp-row { display: flex; gap: 10px; align-items: center; padding: 7px 0; font-size: 13px; }
+  .bp-moves { font-size: 11px; color: var(--secondary-text-color); margin-top: 2px; }
 `;
 
 // --------------------------------------------------------------------- card
@@ -3121,6 +3266,9 @@ class SnipeHuntStrategy {
       binder: {title: 'Binder', path: 'binder', icon: 'mdi:view-grid', sections: [
         {...section(heading('The binder', 'mdi:view-grid'), panel('binder')), column_span: 3},
       ]},
+      pages: {title: 'Pages', path: 'pages', icon: 'mdi:book-open-page-variant', sections: [
+        {...section(heading('Binder pages', 'mdi:book-open-page-variant'), panel('pages')), column_span: 3},
+      ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
         section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('How it grew', 'mdi:chart-areaspline'), panel('growth'), heading('Market trends', 'mdi:trending-up'), panel('trends'), heading('Products over time', 'mdi:calendar-clock'), panel('products')),
@@ -3156,6 +3304,7 @@ class SnipeHuntStrategy {
     if (!upgraded.includes('learn')) upgraded.push('learn');
     if (!upgraded.includes('catalog')) upgraded.push('catalog');
     if (!upgraded.includes('binder')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'binder');
+    if (!upgraded.includes('pages')) upgraded.splice(upgraded.includes('binder') ? upgraded.indexOf('binder') + 1 : upgraded.length, 0, 'pages');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
