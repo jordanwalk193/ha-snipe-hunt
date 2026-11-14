@@ -180,7 +180,7 @@ const context = (card) => {
   // Small steals fold too: a pick whose dollar gap is under gap_floor ($50 cards for $4
   // stand out, $5 cards for $3 do not). No gap_floor from the bot means off.
   const floor = Number(d.gap_floor) || 0;
-  const nearMarket = p => !p.jackpot && ((fold > 0 && (p.share_now ?? shareNow(p)) != null && (p.share_now ?? shareNow(p)) >= fold) || (floor > 0 && p.gap != null && p.gap < floor));
+  const nearMarket = p => !p.jackpot && ((fold > 0 && (p.share_now ?? shareNow(p)) != null && (p.share_now ?? shareNow(p)) >= fold) || (p.small != null ? p.small === true : (floor > 0 && p.gap != null && p.gap < floor)));
   const folded = unfolded.filter(nearMarket);
   const picks = unfolded.filter(p => !nearMarket(p));
   noteSeen(all);
@@ -585,14 +585,15 @@ const knowBlock = (x, d) => {
   const sl = k.sell;
   if (sl) {
     const bits = [];
-    if (sl.m30 != null) bits.push(`Sells about ${sl.m30} a month`);
+    if (sl.m30 != null && sl.m90 >= 2) bits.push(`Sells about ${sl.m30} a month`);
+    if (sl.m90 === 1) bits.push('1 sale in 90 days');
     if (sl.live != null) bits.push(`${sl.live} listed now`);
-    if (sl.days != null) bits.push(`usually sells in ~${sl.days} days`);
-    if (bits.length) rows.push(`<div class="kl"><span class="kh">HOW IT SELLS</span>${bits.join(' · ')}${sl.m90 != null ? ` <span class="km">(from ${sl.m90} sale${sl.m90 === 1 ? '' : 's'} in 90 days)</span>` : ''}</div>`);
+    if (sl.days != null && sl.live >= 2) bits.push(`at this pace the ${sl.live} listed copies would take ~${sl.days} days to sell`);
+    if (bits.length) rows.push(`<div class="kl"><span class="kh">HOW IT SELLS</span>${bits.join(' · ')}${sl.m90 >= 2 ? ` <span class="km">(from ${sl.m90} sale${sl.m90 === 1 ? '' : 's'} in 90 days)</span>` : ''}</div>`);
     if (sl.ask != null && x.v != null) {
       const r = sl.ask / x.v - 1;
       const sp = Math.abs(r) >= 0.30 ? ` <b style="color:${r > 0 ? '#e53935' : '#43a047'}">${r > 0 ? '▲' : '▼'} ${Math.round(Math.abs(r) * 100)}%</b>` : '';
-      rows.push(`<div class="kl"><span class="kh">LISTED VS SOLD</span>Listed now from ${money(sl.ask)}, sold for ${money(x.v)}${sp}${x.vn ? ` <span class="km">(from ${x.vn} sale${x.vn === 1 ? '' : 's'})</span>` : ''}</div>`);
+      rows.push(`<div class="kl"><span class="kh">LISTED VS SOLD</span>Listed now around ${money(sl.ask)}${sl.live ? ` (median of ${sl.live} listed)` : ''}, sold for ${money(x.v)}${sp}${x.vn ? ` <span class="km">(from ${x.vn} sale${x.vn === 1 ? '' : 's'})</span>` : ''}</div>`);
     }
   }
   const g = k.grade;
@@ -601,7 +602,7 @@ const knowBlock = (x, d) => {
     const say = g.ev == null ? null : {yes: ['worth grading', '#43a047'], maybe: ['maybe worth grading', '#b26a00'], no: ['not worth grading', '#e53935']}[g.verdict];
     const ns = n => `(from ${n || 0} sale${n === 1 ? '' : 's'})`;
     rows.push(`<div class="kl"><span class="kh">GRADING</span>PSA 10 sells ~${money(g.p10)} <span class="km">${ns(g.n10)}</span>${g.p9 != null ? `, PSA 9 ~${money(g.p9)} <span class="km">${ns(g.n9)}</span>` : ''}.` +
-      `${g.ev != null ? ` Graded, expect ~${money(g.ev)} after a ${money(fee)} fee${say ? ': ' : '.'}` : ''}${say ? `<b style="color:${say[1]}">${say[0]}</b>` : ''}` +
+      `${g.ev != null ? ` Graded, likely worth ~${money(g.ev)}. After the ${money(fee)} fee, that's about ${g.gain < 0 ? '−' : '+'}${money(Math.abs(g.gain))} over the raw card's ${money(g.raw)}${say ? ': ' : '.'}` : ''}${say ? `<b style="color:${say[1]}">${say[0]}</b>` : ''}` +
       `${g.rate != null ? `<div class="km">assumes about ${Math.round(g.rate * 100)}% grade a 10</div>` : ''}</div>`);
   }
   const se = k.serial;
@@ -2075,10 +2076,10 @@ const PANELS = {
       const yes = x.verdict === 'yes', art = c.art.get(String(x.id));
       return `<div class=line${art ? ` role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}"` : ''} style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px${art ? ';cursor:pointer' : ''}">${art ? cardPic(art) : ownThumb(c, null)}
         <div style="flex:1;min-width:0"><b>${esc(x.card)}</b>
-        <div style="font-size:12px">${money(x.raw)} raw → <b>${money(x.ev)}</b> <span class=muted>expected</span></div>
+        <div style="font-size:12px">${money(x.raw)} raw → ~<b>${money(x.ev)}</b> graded <span class=muted>· ${x.gain < 0 ? '−' : '+'}${money(Math.abs(x.gain))} after the ${fee != null ? money(fee) : ''} fee</span></div>
         <div class=muted style="font-size:12px">PSA 10: ${money(x.p10)} (${x.n10} sale${x.n10 === 1 ? '' : 's'}) · PSA 9: ${x.p9 != null ? money(x.p9) + ' (' + x.n9 + ')' : 'none'} · gem rate ${Math.round(x.rate * 100)}%</div></div>
         <div style="text-align:right;flex:none"><b style="color:#2e7d32">+${money(x.gain)}</b><div>${pill(yes ? 'likely' : 'maybe', yes ? '#2e7d32' : '#455a64')}</div></div></div>`;
-    }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Expected value after ${fee != null ? money(fee) : 'the'} grading fee, from the ledger's PSA 10 and 9 sales of sibling copies and typical gem rates. A rough guide from past sales, not a promise.</div>`;
+    }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Expected graded value; the gain subtracts the raw card's value and the grading fee. From the ledger's PSA 10 and 9 sales of sibling copies and typical gem rates. A rough guide from past sales, not a promise.</div>`;
   }],
 
   closes: ['Where steals happen', false, c => {
