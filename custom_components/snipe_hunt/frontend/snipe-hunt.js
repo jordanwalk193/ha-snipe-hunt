@@ -544,7 +544,7 @@ const SHEET_CSS = `
   #${SHEET_ID} .sh-btn.ghost { background: color-mix(in srgb, var(--primary-text-color, #fff) 10%, transparent); color: inherit; }
   #${SHEET_ID} .sh-know { margin-top: 14px; border-radius: 12px; padding: 4px 12px; background: color-mix(in srgb, var(--primary-text-color, #fff) 5%, transparent); }
   #${SHEET_ID} .sh-know .kl { font-size: 13px; line-height: 1.45; padding: 7px 0; border-top: 1px solid var(--divider-color, #fff2); }
-  #${SHEET_ID} .sh-know .kl:first-of-type { border-top: 0; }
+  #${SHEET_ID} .sh-know .sh-cap + .kl { border-top: 0; }
   #${SHEET_ID} .sh-know .kh { display: block; font-size: 10px; letter-spacing: 1.5px; font-weight: 700; color: var(--secondary-text-color, #aaa); margin-bottom: 1px; }
   #${SHEET_ID} .sh-know .km { color: var(--secondary-text-color, #aaa); font-size: 12px; }
   #${SHEET_ID} .sh-know .kpill { display: inline-block; border-radius: 999px; padding: 2px 9px; margin: 0 6px 0 0; font-size: 12px; font-weight: 700;
@@ -590,15 +590,18 @@ const knowBlock = (x, d) => {
   const g = k.grade;
   if (g && g.p10 != null) {
     const fee = (d && d.grading_fee) ?? 25;
-    const say = {yes: ['worth grading', '#43a047'], maybe: ['maybe worth grading', '#f9a825'], no: ['not worth grading', '#e53935']}[g.verdict];
-    rows.push(`<div class="kl"><span class="kh">GRADING</span>PSA 10 sells ~${money(g.p10)} <span class="km">(from ${g.n10 || 0} sales)</span>${g.p9 != null ? `, PSA 9 ~${money(g.p9)} <span class="km">(from ${g.n9 || 0} sales)</span>` : ''}.` +
+    const say = g.ev == null ? null : {yes: ['worth grading', '#43a047'], maybe: ['maybe worth grading', '#b26a00'], no: ['not worth grading', '#e53935']}[g.verdict];
+    const ns = n => `(from ${n || 0} sale${n === 1 ? '' : 's'})`;
+    rows.push(`<div class="kl"><span class="kh">GRADING</span>PSA 10 sells ~${money(g.p10)} <span class="km">${ns(g.n10)}</span>${g.p9 != null ? `, PSA 9 ~${money(g.p9)} <span class="km">${ns(g.n9)}</span>` : ''}.` +
       `${g.ev != null ? ` Graded, expect ~${money(g.ev)} after a ${money(fee)} fee${say ? ': ' : '.'}` : ''}${say ? `<b style="color:${say[1]}">${say[0]}</b>` : ''}` +
       `${g.rate != null ? `<div class="km">assumes about ${Math.round(g.rate * 100)}% grade a 10</div>` : ''}</div>`);
   }
   const se = k.serial;
-  if (se && (se.tags || []).length) {
+  if (se) {
     const sr = (d && d.serials) || {};
-    rows.push(`<div class="kl"><span class="kh">SERIAL NUMBER</span>${se.tags.filter(t => SERIAL_TAG[t]).map(t => `<span class="kpill">${SERIAL_TAG[t](sr)}</span>`).join('')}${se.n != null ? ` <span class="km">#${se.n} of ${se.run}</span>` : ''}</div>`);
+    const pills = (se.tags || []).filter(t => SERIAL_TAG[t]).map(t => `<span class="kpill">${SERIAL_TAG[t](sr)}</span>`).join('');
+    const num = se.n != null && se.run != null ? `<span class="km">#${se.n} of ${se.run}</span>` : '';
+    if (pills || num) rows.push(`<div class="kl"><span class="kh">SERIAL NUMBER</span>${pills}${num}</div>`);
   }
   if (k.first) rows.push(`<div class="kl">🌟 ${esc(k.first)}</div>`);
   return rows.length ? `<div class="sh-know"><div class="sh-cap" style="margin:10px 0 0">KNOW THIS CARD</div>${rows.join('')}</div>` : '';
