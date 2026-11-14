@@ -1075,7 +1075,6 @@ const clockTime = iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', 
 const dayWord = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], {weekday: 'short'}); };
 
 // ---- Binder pages (the bot's binder_pages): sections of 3x3 pages, pocket by pocket ----
-const spotFor = (c, id) => ((c.d.binder_pages || {}).to_file || []).find(e => String(e.id) === String(id));
 const spotTxt = (sp, titles, same) => !sp ? 'not in the binder'
   : (same === sp[0] ? '' : (titles[sp[0]] || sp[0]) + ' ') + 'p' + sp[1] + ' #' + sp[2];
 const pagesFrom = (layout, key) => {
@@ -1108,18 +1107,21 @@ const pageGrids = (c, s, g, hot = new Set()) => `<div class="bp-pages">` + g.map
   }).join('') + `</div></div>`).join('') + `</div>`;
 const REASON = {'move it': ['move it', '#1e88e5'], 'take it out': ['take it out', '#6d4c41'], 'needs a spot': ['needs a spot', '#8e24aa'],
   'section full': ['section full', '#e53935'], 'after its twin': ['flip it behind its twin', '#546e7a']};
-// Plan entries in binder order (take-outs first), so filing goes section by section.
-const toFileSorted = (b, preview) => {
-  const order = Object.fromEntries((b.sections || []).map((s, i) => [s.key, i]));
-  const pos = e => e.reason === 'take it out' ? [-1, 0, 0] : (e.to ? [order[e.to[0]] ?? 99, e.to[1], e.to[2]] : [100, 0, 0]);
-  return (b.to_file || []).filter(e => !!e.preview === preview)
-    .sort((x, y) => { const a = pos(x), z = pos(y); return a[0] - z[0] || a[1] - z[1] || a[2] - z[2]; });
+// The bot's to-file plan, already in the order to do it: take-outs, then section by section,
+// best card first. Each entry assumes the ones before it are done; `ready` = can be done now.
+const toFileSorted = (b, preview) => (b.to_file || []).filter(e => !!e.preview === preview);
+// "File all" for one section: its entries in plan order, as long as the first one is ready.
+const fileAllBtn = (entries) => {
+  const go = entries.filter(e => e.to);
+  if (go.length < 2 || !entries[0].ready || entries.some(e => !e.to && e.reason !== 'take it out')) return '';
+  return act(`File all ${go.length}`, {action: 'filed', ids: go.map(e => e.id), spots: go},
+    {color: '#43a047', confirm: `Tap again once all ${go.length} are in their pockets`, busy: 'Filing…'});
 };
 const fileBtn = (c, e) => {
   if (!e) return '';
+  if (e.preview) return act('Got it', {action: 'arrived', ids: [e.id]}, {hide: true});
+  if (!e.ready) return e.to || e.reason === 'take it out' ? `<span class="muted" style="font-size:11px;white-space:nowrap">after ↑</span>` : '';
   if (e.reason === 'take it out') return act('Taken out', {action: 'binder_clear', ids: [e.id]}, {hide: true});
-  if (!e.to) return '';
-  if (e.preview) return act('Got it, in binder', {action: 'arrived', ids: [e.id], binder: true, spots: [e]}, {hide: true});
   return act(e.reason === 'move it' ? 'Moved' : 'Filed', {action: 'filed', ids: [e.id], spots: [e]}, {hide: true, color: '#43a047'});
 };
 // "slide p1 #4–8 over one, p1 #9 → p2 #2": cards that shift along the same page read as one slide.
@@ -2355,7 +2357,15 @@ const PANELS = {
     const open = store('resort_open', '');
     const waiting = toFileSorted(b, false), coming = toFileSorted(b, true);
     const hot = new Set(waiting.filter(e => e.to).map(e => e.to.join('|')));
-    const toFile = waiting.length ? cap(`TO FILE · ${waiting.length}`) + waiting.map(e => fileRow(c, e, titles)).join('')
+    const groups = [];
+    waiting.forEach(e => { const k = (e.to || e.from || [''])[0];
+      if (!groups.length || groups[groups.length - 1].k !== k) groups.push({k, list: []});
+      groups[groups.length - 1].list.push(e); });
+    const toFile = waiting.length ? cap(`TO FILE · ${waiting.length}`) +
+      `<div class="muted" style="font-size:12px;padding:2px 0 4px">In order, top to bottom: each card's spot assumes the ones above it are done. File them one by one, or put a section's cards in and tap File all.</div>` +
+      groups.map(g => `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px">
+        <b style="font-size:13px">${esc(titles[g.k] || g.k)} · ${g.list.length}</b>${fileAllBtn(g.list)}</div>` +
+        g.list.map(e => fileRow(c, e, titles)).join('')).join('')
       : empty('✅ Nothing to file: every card has its pocket.');
     const later = coming.length ? `<details style="margin-top:6px"><summary class="muted" style="font-size:12px;cursor:pointer">🚚 ${coming.length} on the way: where they'll go</summary>` +
       coming.map(e => fileRow(c, e, titles)).join('') + `</details>` : '';
@@ -2365,10 +2375,11 @@ const PANELS = {
       const expect = s.grid.flat().filter(Boolean);
       const layout = {};
       s.resort.forEach((pg, pi) => pg.forEach((id, ki) => { if (id) layout[id] = [s.key, pi + 1, ki + 1]; }));
-      const tools = resorting
+      const tools = resorting && !s.blocked
         ? `<div class="warn" style="margin-top:6px;padding:8px 10px;font-size:12px">↕️ Re-sort ${esc(s.title)}: lay the pages out like this (best first), then tap Done.</div>
            <div class="row">${act('✅ Done, re-sorted', {action: 'binder_resort', section: s.key, layout, expect}, {color: '#43a047', busy: 'Saving…'})}${setBtn('Cancel', 'resort_open', '')}</div>`
-        : `<div class="row">${setBtn(s.resort_suggested ? '↕️ Re-sort (suggested)' : '↕️ Re-sort', 'resort_open', s.key, s.resort_suggested ? '#fb8c00' : null)}</div>`;
+        : (s.blocked ? `<div class="muted" style="font-size:11px;padding:4px 0">↕️ Re-sort after this section's move it / take it out cards are done.</div>`
+          : `<div class="row">${setBtn(s.resort_suggested ? '↕️ Re-sort (suggested)' : '↕️ Re-sort', 'resort_open', s.key, s.resort_suggested ? '#fb8c00' : null)}</div>`);
       return `<div class="bp-sec">` + sectionHead(s, true) + tools + pageGrids(c, s, g, resorting ? new Set() : hot) + `</div>`;
     }).join('');
     return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
@@ -2413,7 +2424,7 @@ const PANELS = {
     // Got it: in hand, to file. In binder: already filed. (Untracked envelopes never send a delivery email.)
     const rows = list => list.map(x => `<div data-row class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${cardPic(x)}
       <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)}${age(x)} · ${esc(x.sl)} ${x.pg && x.pg !== 'not in the binder' ? ' · goes on ' + esc(x.pg) : ''}</span>
-        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${(() => { const e = spotFor(c, x.id); return act('In binder', {action: 'arrived', ids: [x.id], binder: true, ...(e && e.to ? {spots: [e]} : {})}, {hide: true}); })()}</span></span><b>${money(x.p)}</b></div>`).join('');
+        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${act('In binder', {action: 'arrived', ids: [x.id], binder: true}, {hide: true})}</span></span><b>${money(x.p)}</b></div>`).join('');
     const late = transit.filter(x => days(x) >= 21);
     const MAIL_SHOWN = 8, mailAll = store('mail_limit', 'page') === 'all';
     return `<div style="padding-top:10px">` + grid(2, [
