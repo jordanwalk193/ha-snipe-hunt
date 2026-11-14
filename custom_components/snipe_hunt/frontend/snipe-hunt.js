@@ -570,6 +570,14 @@ const sheetKey = ev => { if (ev.key === 'Escape') closeSheet(); };
 // "Know this card": plain facts from the bot's x.k, each line only when its data is there.
 // Informational only, and every number says how many sales it comes from.
 const SERIAL_TAG = {jersey: s => `🎽 Jersey #${s.jersey ?? 18}`, first: () => '1️⃣ First', last: () => '🔚 Last', one: () => '💎 1/1', low: () => '⬇️ Low', debut: () => '🎂 Debut year'};
+// "The story": what the set, parallel and number mean, and why the card is cool. Text from the bot (x.k.story), each part only when present.
+const STORY_PARTS = [['set', 'SET'], ['parallel', 'PARALLEL'], ['number', 'NUMBER'], ['cool', "WHY IT'S COOL"], ['trivia', 'TRIVIA']];
+const storyBlock = x => {
+  const st = x.k && x.k.story;
+  if (!st) return '';
+  const rows = STORY_PARTS.filter(([key]) => typeof st[key] === 'string' && st[key].trim()).map(([key, label]) => `<div class="kl"><span class="kh">${label}</span>${esc(st[key].trim())}</div>`);
+  return rows.length ? `<div class="sh-know"><div class="sh-cap" style="margin:10px 0 0">THE STORY</div>${rows.join('')}</div>` : '';
+};
 const knowBlock = (x, d) => {
   const k = x.k;
   if (!k) return '';
@@ -628,6 +636,7 @@ const openSheet = (x, d) => {
         <div class="sh-stat"><b style="color:${x.v == null ? 'inherit' : (x.v >= x.p ? '#43a047' : '#e53935')}">${x.v != null ? money(x.v) : '–'}</b><span>WORTH NOW</span></div>
         <div class="sh-stat"><b style="color:${gain == null ? 'inherit' : (gain >= 1 ? '#43a047' : '#e53935')}">${gain != null ? '×' + (gain >= 10 ? Math.round(gain) : gain.toFixed(1)) : '–'}</b><span>GAIN</span></div>
       </div>
+      ${storyBlock(x)}
       ${knowBlock(x, d)}
       ${h.length ? `<div class="sh-cap">${h.length > 1 ? 'RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID' : 'THE ONE SALE OF THIS CARD ON RECORD'}</div>${h.length > 1 ? sparkSvg(h, x.p) : ''}` +
         h.slice(0, 6).map(s => `<a class="sh-sale" href="https://www.ebay.com/itm/${esc(s[2])}" data-sh="open"><span>${esc(s[0])}</span><b>${money(s[1])}</b></a>`).join('')
