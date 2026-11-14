@@ -2007,7 +2007,8 @@ const PANELS = {
   // Walker on the field: his MLB line next to what his cards sell for (informational, from the free MLB API).
   player: ['Walker on the field', false, c => {
     const p = c.d.player;
-    if (!p) return empty('Walker\'s MLB line shows once the bot has fetched it. Update the bot if it never does: this needs the facts version.');
+    if (c.d.player === undefined) return empty('Not available from this bot.');
+    if (!p) return empty('Waiting for the first MLB read (within the hour).');
     const b = p.bio || {}, s = p.season || {}, cr = p.career || {};
     const green = '#2e7d32', red = '#c62828', blue = '#1e88e5';
     const head = `<div style="padding:10px 0 4px;font-size:15px"><b>#${esc(b.number ?? 18)}</b> <span class=muted>· ${esc(b.team || '')} · age ${esc(b.age ?? '?')} · bats ${esc(b.bats || '?')} · debut ${esc(b.debut || '?')}</span></div>`;
@@ -2017,14 +2018,14 @@ const PANELS = {
     if (p.offseason) h += `<div class=muted style="font-size:12px;margin-top:8px">Offseason: next games in spring.</div>`;
     const f = p.form;
     if (f && f.ops != null && f.season_ops != null) {
-      const col = f.state === 'hot' ? green : f.state === 'cold' ? red : '#546e7a', w = v => Math.max(4, Math.min(100, Math.round(v / 1.2 * 100)));
+      const col = f.state === 'hot' ? green : f.state === 'cold' ? red : '#455a64', w = v => Math.max(4, Math.min(100, Math.round(v / 1.2 * 100)));
       h += cap('FORM · LAST ' + f.g + ' GAMES AGAINST THE SEASON') +
         `<div class=line style="padding:4px 0;font-size:13px">${f.state === 'hot' ? '🔥 Hot' : f.state === 'cold' ? '🧊 Cold' : 'Steady'} <span class=muted>· OPS ${Number(f.ops).toFixed(3)} against ${Number(f.season_ops).toFixed(3)} for the season (${f.g} games)</span>
         <div style="position:relative;height:10px;border-radius:5px;background:var(--divider-color);margin-top:6px"><div style="width:${w(f.ops)}%;height:100%;border-radius:5px;background:${col}"></div><div style="position:absolute;top:-2px;bottom:-2px;left:${w(f.season_ops)}%;width:2px;background:var(--primary-text-color)"></div></div></div>`;
     }
     if ((p.milestones || []).length) h += cap('NEXT MILESTONES') + p.milestones.map(m => `<div class=line style="padding:5px 0;font-size:13px"><b>${m.to_go} ${esc(m.stat)}</b> to ${m.next} <span class=muted>· ${m.now} now</span></div>`).join('');
     if ((p.all_star || []).length) h += cap('ALL-STAR') + `<div style="font-size:13px;padding:4px 0">⭐ ${p.all_star.map(esc).join(' · ')}</div>`;
-    if ((p.il || []).length) h += cap('INJURED LIST') + p.il.map(x => `<div class=line style="padding:5px 0;font-size:13px">🩹 ${esc(x.from)} → ${esc(x.to || 'now')}${x.rehab ? ' ' + pill('rehab', '#546e7a') : ''}</div>`).join('');
+    if ((p.il || []).length) h += cap('INJURED LIST') + p.il.map(x => `<div class=line style="padding:5px 0;font-size:13px">🩹 ${esc(x.from)} → ${esc(x.to || 'now')}${x.rehab ? ' ' + pill('rehab', '#455a64') : ''}</div>`).join('');
     const ms = (p.months || []).filter(m => m.heat != null);
     if (ms.length) {
       const top = Math.max(1.5, ...ms.map(m => m.heat));
@@ -2040,28 +2041,34 @@ const PANELS = {
 
   products: ['Products over time', false, c => {
     const ps = c.d.products;
-    if (!ps) return empty('Update the bot to see this: it needs the facts version.');
+    if (!ps) return empty('Not available from this bot.');
     if (!ps.length) return empty('No product has enough raw sales yet (it needs a handful per set and year).');
-    return ps.map(x => {
-      const fade = x.fade == null ? '' : pill(`${x.fade > 0 ? '+' : ''}${x.fade}%`, x.fade >= 0 ? '#2e7d32' : '#78909c');
+    const all = store('products_limit', 'page') === 'all', shown = all ? ps : ps.slice(0, 12);
+    return shown.map(x => {
+      if (x.seen_release === false) return `<div class=line style="padding:7px 0;font-size:13px"><b>${esc(x.family)}</b> <span class=muted>${esc(x.year)}</span>
+        <div class=muted style="font-size:12px">${x.n} sales · median ${money(x.median)}</div></div>`;
+      const fade = x.fade == null ? '' : pill(`${x.fade > 0 ? '+' : ''}${x.fade}%`, x.fade > 0 ? '#2e7d32' : '#455a64');
       return `<div class=line style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px"><div style="flex:1;min-width:0"><b>${esc(x.family)}</b> <span class=muted>${esc(x.year)}</span>
         <div class=muted style="font-size:12px">first sale ${esc(x.first)} · ${x.n} sales</div>
         <div style="font-size:12px">${x.early != null ? money(x.early) + ' <span class=muted>(' + x.n_early + ')</span>' : '<span class=muted>early: too few</span>'} → ${x.since != null ? '<b>' + money(x.since) + '</b> <span class=muted>(' + x.n_since + ')</span>' : '<span class=muted>since: too few</span>'}</div></div>${fade}</div>`;
-    }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Raw, non-auto sales: the median of the first 30 days against the sales after. Green = held or rose, grey = fell.</div>`;
+    }).join('') +
+      (ps.length > shown.length ? `<div class="line" style="padding-top:10px">${setBtn('Show all ' + ps.length, 'products_limit', 'all', '#546e7a')}</div>`
+        : (all && ps.length > 12 ? `<div class="line" style="padding-top:10px">${setBtn('Show fewer', 'products_limit', 'page')}</div>` : '')) +
+      `<div class=muted style="font-size:12px;margin-top:8px">Raw, non-auto sales: the median of the first 30 days against the sales after, for products whose release the ledger saw. Green = rose, grey = held or fell.</div>`;
   }],
 
   grading: ['Worth grading', false, c => {
     const g = c.d.grading;
-    if (!g) return empty('Update the bot to see this: it needs the facts version.');
+    if (!g) return empty('Not available from this bot.');
     if (!g.length) return empty('No card clearly earns its grading fee from past PSA 10 and 9 sales.');
     const fee = c.d.grading_fee;
     return g.map(x => {
-      const yes = x.verdict === 'yes', art = c.art.get(String(x.id)) || {id: x.id};
-      return `<div class=line role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px;cursor:pointer">${cardPic(art)}
+      const yes = x.verdict === 'yes', art = c.art.get(String(x.id));
+      return `<div class=line${art ? ` role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}"` : ''} style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px${art ? ';cursor:pointer' : ''}">${art ? cardPic(art) : ownThumb(c, null)}
         <div style="flex:1;min-width:0"><b>${esc(x.card)}</b>
         <div style="font-size:12px">${money(x.raw)} raw → <b>${money(x.ev)}</b> <span class=muted>expected</span></div>
         <div class=muted style="font-size:12px">PSA 10: ${money(x.p10)} (${x.n10} sale${x.n10 === 1 ? '' : 's'}) · PSA 9: ${x.p9 != null ? money(x.p9) + ' (' + x.n9 + ')' : 'none'} · gem rate ${Math.round(x.rate * 100)}%</div></div>
-        <div style="text-align:right;flex:none"><b style="color:#2e7d32">+${money(x.gain)}</b><div>${pill(yes ? 'likely' : 'maybe', yes ? '#2e7d32' : '#78909c')}</div></div></div>`;
+        <div style="text-align:right;flex:none"><b style="color:#2e7d32">+${money(x.gain)}</b><div>${pill(yes ? 'likely' : 'maybe', yes ? '#2e7d32' : '#455a64')}</div></div></div>`;
     }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Expected value after ${fee != null ? money(fee) : 'the'} grading fee, from the ledger's PSA 10 and 9 sales of sibling copies and typical gem rates. A rough guide from past sales, not a promise.</div>`;
   }],
 
