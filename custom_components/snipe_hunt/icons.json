@@ -127,6 +127,12 @@
       "yellow_max_total": {
         "default": "mdi:currency-usd"
       },
+      "gap_floor": {
+        "default": "mdi:arrow-collapse-vertical"
+      },
+      "grading_fee": {
+        "default": "mdi:certificate-outline"
+      },
       "urgent_hours": {
         "default": "mdi:alarm"
       },

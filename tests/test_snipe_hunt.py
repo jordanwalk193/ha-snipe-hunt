@@ -152,6 +152,23 @@ async def test_guess_and_seller_settings_are_numbers(hass, entry, bot):
     assert bot.settings[-1] == {"estimate_bin_cap": 40.0}
 
 
+async def test_gap_floor_and_grading_fee_are_dollar_numbers(hass, entry, bot):
+    bot.snapshot["settings"].update(gap_floor=15, grading_fee=25)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    gap = state(hass, entry, "number", "gap_floor")
+    fee = state(hass, entry, "number", "grading_fee")
+    assert gap.state == "15"
+    assert fee.state == "25"
+    for s in (gap, fee):
+        assert s.attributes["unit_of_measurement"] == "USD"
+    assert (gap.attributes["min"], gap.attributes["max"], gap.attributes["step"]) == (0, 100, 1)
+    assert (fee.attributes["min"], fee.attributes["max"], fee.attributes["step"]) == (0, 200, 1)
+    await hass.services.async_call("number", "set_value",
+                                   {"entity_id": fee.entity_id, "value": 30}, blocking=True)
+    assert bot.settings[-1] == {"grading_fee": 30.0}
+
+
 async def test_pick_feedback_reaches_the_bot_with_a_reason_and_note(hass, entry, bot):
     await hass.services.async_call(
         DOMAIN, "pick_feedback",

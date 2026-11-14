@@ -233,6 +233,12 @@
       "yellow_max_total": {
         "name": "Cheap-card alert limit"
       },
+      "gap_floor": {
+        "name": "Gap floor (quiet small steals)"
+      },
+      "grading_fee": {
+        "name": "Grading fee"
+      },
       "urgent_hours": {
         "name": "Urgent auction window"
       },
