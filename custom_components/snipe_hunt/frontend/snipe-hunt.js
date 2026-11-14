@@ -542,6 +542,13 @@ const SHEET_CSS = `
   #${SHEET_ID} .sh-btn { cursor: pointer; border-radius: 10px; padding: 10px 14px; font-size: 14px; font-weight: 800; text-decoration: none;
     background: var(--primary-color, #03a9f4); color: var(--text-primary-color, #fff); }
   #${SHEET_ID} .sh-btn.ghost { background: color-mix(in srgb, var(--primary-text-color, #fff) 10%, transparent); color: inherit; }
+  #${SHEET_ID} .sh-know { margin-top: 14px; border-radius: 12px; padding: 4px 12px; background: color-mix(in srgb, var(--primary-text-color, #fff) 5%, transparent); }
+  #${SHEET_ID} .sh-know .kl { font-size: 13px; line-height: 1.45; padding: 7px 0; border-top: 1px solid var(--divider-color, #fff2); }
+  #${SHEET_ID} .sh-know .kl:first-of-type { border-top: 0; }
+  #${SHEET_ID} .sh-know .kh { display: block; font-size: 10px; letter-spacing: 1.5px; font-weight: 700; color: var(--secondary-text-color, #aaa); margin-bottom: 1px; }
+  #${SHEET_ID} .sh-know .km { color: var(--secondary-text-color, #aaa); font-size: 12px; }
+  #${SHEET_ID} .sh-know .kpill { display: inline-block; border-radius: 999px; padding: 2px 9px; margin: 0 6px 0 0; font-size: 12px; font-weight: 700;
+    background: color-mix(in srgb, var(--primary-text-color, #fff) 10%, transparent); }
   @keyframes sh-fade { from { opacity: 0; } }
   @keyframes sh-pop { from { transform: translateY(14px) scale(.97); opacity: 0; } }
   @media (prefers-reduced-motion: reduce) { #${SHEET_ID} .sh-back, #${SHEET_ID} .sh { animation: none; } #${SHEET_ID} .sh-card { transition: none; } }`;
@@ -560,7 +567,43 @@ const sparkSvg = (h, paid) => {
 };
 const closeSheet = () => { const el = document.getElementById(SHEET_ID); if (el) el.remove(); document.removeEventListener('keydown', sheetKey); };
 const sheetKey = ev => { if (ev.key === 'Escape') closeSheet(); };
-const openSheet = x => {
+// "Know this card": plain facts from the bot's x.k, each line only when its data is there.
+// Informational only, and every number says how many sales it comes from.
+const SERIAL_TAG = {jersey: s => `🎽 Jersey #${s.jersey ?? 18}`, first: () => '1️⃣ First', last: () => '🔚 Last', one: () => '💎 1/1', low: () => '⬇️ Low', debut: () => '🎂 Debut year'};
+const knowBlock = (x, d) => {
+  const k = x.k;
+  if (!k) return '';
+  const rows = [];
+  const sl = k.sell;
+  if (sl) {
+    const bits = [];
+    if (sl.m30 != null) bits.push(`Sells about ${sl.m30} a month`);
+    if (sl.live != null) bits.push(`${sl.live} listed now`);
+    if (sl.days != null) bits.push(`usually sells in ~${sl.days} days`);
+    if (bits.length) rows.push(`<div class="kl"><span class="kh">HOW IT SELLS</span>${bits.join(' · ')}${sl.m90 != null ? ` <span class="km">(from ${sl.m90} sale${sl.m90 === 1 ? '' : 's'} in 90 days)</span>` : ''}</div>`);
+    if (sl.ask != null && x.v != null) {
+      const r = sl.ask / x.v - 1;
+      const sp = Math.abs(r) >= 0.30 ? ` <b style="color:${r > 0 ? '#e53935' : '#43a047'}">${r > 0 ? '▲' : '▼'} ${Math.round(Math.abs(r) * 100)}%</b>` : '';
+      rows.push(`<div class="kl"><span class="kh">LISTED VS SOLD</span>Listed now from ${money(sl.ask)}, sold for ${money(x.v)}${sp}${x.vn ? ` <span class="km">(from ${x.vn} sale${x.vn === 1 ? '' : 's'})</span>` : ''}</div>`);
+    }
+  }
+  const g = k.grade;
+  if (g && g.p10 != null) {
+    const fee = (d && d.grading_fee) ?? 25;
+    const say = {yes: ['worth grading', '#43a047'], maybe: ['maybe worth grading', '#f9a825'], no: ['not worth grading', '#e53935']}[g.verdict];
+    rows.push(`<div class="kl"><span class="kh">GRADING</span>PSA 10 sells ~${money(g.p10)} <span class="km">(from ${g.n10 || 0} sales)</span>${g.p9 != null ? `, PSA 9 ~${money(g.p9)} <span class="km">(from ${g.n9 || 0} sales)</span>` : ''}.` +
+      `${g.ev != null ? ` Graded, expect ~${money(g.ev)} after a ${money(fee)} fee${say ? ': ' : '.'}` : ''}${say ? `<b style="color:${say[1]}">${say[0]}</b>` : ''}` +
+      `${g.rate != null ? `<div class="km">assumes about ${Math.round(g.rate * 100)}% grade a 10</div>` : ''}</div>`);
+  }
+  const se = k.serial;
+  if (se && (se.tags || []).length) {
+    const sr = (d && d.serials) || {};
+    rows.push(`<div class="kl"><span class="kh">SERIAL NUMBER</span>${se.tags.filter(t => SERIAL_TAG[t]).map(t => `<span class="kpill">${SERIAL_TAG[t](sr)}</span>`).join('')}${se.n != null ? ` <span class="km">#${se.n} of ${se.run}</span>` : ''}</div>`);
+  }
+  if (k.first) rows.push(`<div class="kl">🌟 ${esc(k.first)}</div>`);
+  return rows.length ? `<div class="sh-know"><div class="sh-cap" style="margin:10px 0 0">KNOW THIS CARD</div>${rows.join('')}</div>` : '';
+};
+const openSheet = (x, d) => {
   closeSheet();
   if (!x) return;
   const ring = [...x.f].map(f => POCKET_RING[f]).find(Boolean);
@@ -582,6 +625,7 @@ const openSheet = x => {
         <div class="sh-stat"><b style="color:${x.v == null ? 'inherit' : (x.v >= x.p ? '#43a047' : '#e53935')}">${x.v != null ? money(x.v) : '–'}</b><span>WORTH NOW</span></div>
         <div class="sh-stat"><b style="color:${gain == null ? 'inherit' : (gain >= 1 ? '#43a047' : '#e53935')}">${gain != null ? '×' + (gain >= 10 ? Math.round(gain) : gain.toFixed(1)) : '–'}</b><span>GAIN</span></div>
       </div>
+      ${knowBlock(x, d)}
       ${h.length ? `<div class="sh-cap">${h.length > 1 ? 'RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID' : 'THE ONE SALE OF THIS CARD ON RECORD'}</div>${h.length > 1 ? sparkSvg(h, x.p) : ''}` +
         h.slice(0, 6).map(s => `<a class="sh-sale" href="https://www.ebay.com/itm/${esc(s[2])}" data-sh="open"><span>${esc(s[0])}</span><b>${money(s[1])}</b></a>`).join('')
         : '<div class="sh-meta" style="margin-top:14px">No sales of this card in the ledger yet, so it is valued at what you paid.</div>'}
@@ -2845,7 +2889,7 @@ class SnipeHuntCard extends HTMLElement {
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
     if (el.dataset.do === 'snipe') return this.snipe(el);
-    if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value));
+    if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value), this.feed.data || {});
     if (el.dataset.do === 'nav') {
       const base = location.pathname.split('/').slice(0, 2).join('/');
       history.pushState(null, '', base + '/' + el.dataset.path);
