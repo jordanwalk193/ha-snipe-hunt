@@ -1588,6 +1588,50 @@ const PANELS = {
       `<pre class="brag">${esc(h.card)}</pre>`;
   }],
 
+  trophies: ['Trophy Case', false, c => {
+    // Achievements from the real collection and the hunt (the bot's src/trophies.py).
+    // Bronze, silver, gold; a tier once earned stays earned.
+    const t = c.d.trophies;
+    if (!t) return empty('Update the bot to see this: it needs a version with the Trophy Case.');
+    const MED = {gold: ['🥇', '#f9a825'], silver: ['🥈', '#90a4ae'], bronze: ['🥉', '#a1887f']};
+    const pctW = v => Math.max(0, Math.min(100, Math.round(v * 100)));
+    const nl = t.next_level;
+    const lvlShare = nl ? t.points / nl.points : 1;
+    const by = k => (t.trophies || []).filter(x => x.tier === k).length;
+    const hero = `<div class="tro-hero">
+      <div class="tro-level">${esc(t.level)}</div>
+      <div class="muted" style="font-size:13px">${t.points} of ${t.total} trophy points · ${t.earned} of ${t.count} trophies</div>
+      <div class="meter" style="height:10px;margin:8px 0 4px"><span style="width:${pctW(lvlShare)}%;background:linear-gradient(90deg,#f9a825,#ef6c00)"></span></div>
+      <div class="muted" style="font-size:12px">${nl ? `<b style="color:var(--primary-text-color)">${nl.to_go}</b> more point${nl.to_go === 1 ? '' : 's'} to <b style="color:var(--primary-text-color)">${esc(nl.name)}</b>` : 'Top of the ladder. Hall of Famer.'}</div>
+      <div class="row" style="justify-content:center;margin-top:8px;gap:14px;font-size:15px">🥇 ${by('gold')} &nbsp; 🥈 ${by('silver')} &nbsp; 🥉 ${by('bronze')}</div></div>`;
+    const close = (t.trophies || []).filter(x => x.next && x.next.progress >= 0.5)
+      .sort((a, b) => b.next.progress - a.next.progress).slice(0, 4);
+    const closeHtml = close.length ? cap('ALMOST THERE') + `<div class="tro-close">` + close.map(x =>
+      `<div class="tro-chip"><span style="font-size:18px">${x.emoji}</span><div style="flex:1;min-width:0"><b>${esc(x.name)}</b>
+        <div class="muted" style="font-size:11px">${esc(x.value_text)} → ${esc(x.next.tier)} at ${esc(x.next.goal_text)}</div>
+        <div class="meter"><span style="width:${pctW(x.next.progress)}%;background:${(MED[x.next.tier] || MED.gold)[1]}"></span></div></div></div>`).join('') + `</div>` : '';
+    const recent = (t.recent || []).length ? `<div class="muted" style="font-size:12px;margin:6px 0 0">Latest: ` +
+      t.recent.map(x => `${(MED[x.tier] || ['', ''])[0]} ${esc(x.name)} <span style="opacity:.7">${esc(x.at)}</span>`).join(' · ') + `</div>` : '';
+    const groups = [...new Set((t.trophies || []).map(x => x.group))];
+    const tile = x => {
+      const m = MED[x.tier];
+      const n = x.next;
+      return `<div class="tro${m ? ' won ' + x.tier : ''}" style="${m ? `border-color:${m[1]};background:${m[1]}1f` : ''}" title="${esc(x.rule)}">
+        <div class="tro-top"><span class="tro-emoji">${x.emoji}</span><span class="tro-medal">${m ? m[0] : '🔒'}</span></div>
+        <div class="tro-name">${esc(x.name)}</div>
+        <div class="tro-val">${esc(x.value_text)}</div>
+        <div class="muted tro-rule">${esc(x.rule)}</div>
+        ${n ? `<div class="meter"><span style="width:${pctW(n.progress)}%;background:${(MED[n.tier] || MED.gold)[1]}"></span></div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${esc(n.tier)} at ${esc(n.goal_text)}</div>`
+          : `<div style="font-size:11px;margin-top:4px;font-weight:700;color:#f9a825">MAXED OUT</div>`}
+        ${x.at ? `<div class="muted" style="font-size:10px;margin-top:2px">since ${esc(x.at)}</div>` : ''}</div>`;
+    };
+    return `<div style="padding-top:10px"></div>` + hero + closeHtml + recent +
+      groups.map(g => cap(esc(g).toUpperCase()) + `<div class="tro-grid">` +
+        t.trophies.filter(x => x.group === g).map(tile).join('') + `</div>`).join('') +
+      (t.card ? cap('TROPHY CARD · SAFE TO SHARE') + `<pre class="brag">${esc(t.card)}</pre>` : '');
+  }],
+
   brag: ['Brag board', false, c => {
     const b = c.d.brag;
     if (!b) return empty('Update the bot to see this: it needs a version with the brag board.');
@@ -2677,6 +2721,20 @@ const STYLE = `
   .meter { height: 6px; border-radius: 3px; background: #8883; margin-top: 4px; overflow: hidden; }
   .meter span { display: block; height: 100%; border-radius: 3px; }
   .comp { padding: 1px 6px; border-radius: 8px; background: #8882; color: var(--primary-text-color); text-decoration: none; white-space: nowrap; }
+  .tro-hero { text-align: center; padding: 14px 12px; border-radius: 16px; margin-bottom: 10px; background: linear-gradient(135deg, #f9a82522, #ef6c0014); border: 1px solid #f9a82566; }
+  .tro-level { font-size: 30px; font-weight: 800; letter-spacing: .5px; }
+  .tro-close { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin: 6px 0; }
+  .tro-chip { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 12px; border: 1px dashed var(--divider-color, #8886); }
+  .tro-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 6px 0 10px; }
+  .tro { padding: 10px; border-radius: 14px; border: 2px solid var(--divider-color, #8884); opacity: .62; }
+  .tro.won { opacity: 1; }
+  .tro.gold { box-shadow: 0 0 12px #f9a82555; }
+  .tro-top { display: flex; justify-content: space-between; align-items: center; }
+  .tro-emoji { font-size: 28px; }
+  .tro-medal { font-size: 20px; }
+  .tro-name { font-weight: 700; margin-top: 4px; }
+  .tro-val { font-size: 18px; font-weight: 800; }
+  .tro-rule { font-size: 11px; line-height: 1.3; min-height: 28px; }
   .brag { white-space: pre-wrap; font-size: 13px; line-height: 1.5; padding: 10px 12px; margin: 4px 0 0; border-radius: 10px; background: var(--secondary-background-color, #8881); user-select: all; }
   .savings { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: #2e7d3218; border: 1px solid #2e7d3255; font-size: 13px; line-height: 1.5; }
   .bundle { padding: 10px 12px; margin: 8px 0; border-radius: 12px; border: 1px solid var(--divider-color, #8884); }
@@ -3274,6 +3332,9 @@ class SnipeHuntStrategy {
         {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
+      trophies: {title: 'Trophies', path: 'trophies', icon: 'mdi:trophy', sections: [
+        {...section(heading('Trophy Case', 'mdi:trophy'), panel('trophies')), column_span: 3},
+      ]},
       binder: {title: 'Binder', path: 'binder', icon: 'mdi:view-grid', sections: [
         {...section(heading('The binder', 'mdi:view-grid'), panel('binder')), column_span: 3},
       ]},
@@ -3315,6 +3376,7 @@ class SnipeHuntStrategy {
     if (!upgraded.includes('learn')) upgraded.push('learn');
     if (!upgraded.includes('catalog')) upgraded.push('catalog');
     if (!upgraded.includes('binder')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'binder');
+    if (!upgraded.includes('trophies')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'trophies');
     if (!upgraded.includes('pages')) upgraded.splice(upgraded.includes('binder') ? upgraded.indexOf('binder') + 1 : upgraded.length, 0, 'pages');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
