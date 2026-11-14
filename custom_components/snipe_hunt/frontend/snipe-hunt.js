@@ -153,9 +153,11 @@ const labelPills = p => (p.labels || []).filter(l => LABEL[l]).map(l => pill(LAB
 const delivered = p => p.landed ?? p.total;
 const bySweep = (x, y) => (y.sweep_score ?? -1e9) - (x.sweep_score ?? -1e9) || (delivered(x) ?? 1e9) - (delivered(y) ?? 1e9);
 const oldOrder = (x, y) => y.deal - x.deal || !EDGE[x.edge] - !EDGE[y.edge] || (TIER_RANK[x.tier] ?? 3) - (TIER_RANK[y.tier] ?? 3) || saved(y) - saved(x);
+// Biggest dollar gap first (the bot's gap: value minus delivered cost now); no gap sorts last.
+const byGap = (x, y) => (y.gap ?? -1e9) - (x.gap ?? -1e9);
 const steals = picks => picks
   .filter(p => p.deal >= 2 && !(p.is_auction && p.max != null && Number(p.bid_now ?? p.price) > Number(p.max)))
-  .sort((x, y) => (x.sweep_score != null && y.sweep_score != null ? bySweep(x, y) : oldOrder(x, y)));
+  .sort((x, y) => byGap(x, y) || (x.sweep_score != null && y.sweep_score != null ? bySweep(x, y) : oldOrder(x, y)));
 
 // What every panel gets: the snapshot plus a few views of it.
 const context = (card) => {
@@ -175,12 +177,15 @@ const context = (card) => {
   // auction bid up, a want-list card) folds into a strip under the steals. A
   // jackpot never folds. Bots that don't send fold_share fold nothing.
   const fold = Number(d.fold_share) || 0;
-  const nearMarket = p => fold > 0 && !p.jackpot && (p.share_now ?? shareNow(p)) != null && (p.share_now ?? shareNow(p)) >= fold;
+  // Small steals fold too: a pick whose dollar gap is under gap_floor ($50 cards for $4
+  // stand out, $5 cards for $3 do not). No gap_floor from the bot means off.
+  const floor = Number(d.gap_floor) || 0;
+  const nearMarket = p => !p.jackpot && ((fold > 0 && (p.share_now ?? shareNow(p)) != null && (p.share_now ?? shareNow(p)) >= fold) || (floor > 0 && p.gap != null && p.gap < floor));
   const folded = unfolded.filter(nearMarket);
   const picks = unfolded.filter(p => !nearMarket(p));
   noteSeen(all);
   return {
-    d, s, card, picks, gixen, gixenOn, windowMs, unfolded, folded, fold,
+    d, s, card, picks, gixen, gixenOn, windowMs, unfolded, folded, fold, floor,
     allPicks: all, covered, hiding, hidden: all.length - picks.length,
     inGixen: x => covered.has(x.item_id),
     gixenOff: d.gixen == null,
@@ -365,7 +370,7 @@ const foldedStrip = c => {
   if (!c.folded || !c.folded.length) return '';
   const n = c.folded.length;
   return `<details class="folded" style="margin-top:14px;border:1px dashed #8886;border-radius:12px;padding:6px 10px">
-    <summary style="cursor:pointer;font-size:13px" class="muted">🧊 <b>${n}</b> close to market value, folded away: ${n === 1 ? 'it costs' : 'they cost'} ${Math.round(100 * c.fold)}% of value or more now. Tap to look.</summary>
+    <summary style="cursor:pointer;font-size:13px" class="muted">🧊 <b>${n}</b> small or close to market, folded away. Tap to look.</summary>
     <div style="opacity:.75">${c.folded.slice().sort((x, y) => (x.share_now ?? shareNow(x)) - (y.share_now ?? shareNow(y))).map(p => pickLine(p, '', '')).join('')}</div></details>`;
 };
 
@@ -1899,7 +1904,7 @@ const PANELS = {
     if (sort === 'ending') picks.sort((x, y) => end(x) < end(y) ? -1 : (end(x) > end(y) ? 1 : 0));
     if (sort === 'cheap') picks.sort((x, y) => (delivered(x) ?? 1e9) - (delivered(y) ?? 1e9));
     if (sort === 'room') picks.sort((x, y) => room(y) - room(x));
-    if (sort === 'deal') picks.sort((x, y) => (y.deal_pct ?? -1) - (x.deal_pct ?? -1));
+    if (sort === 'deal') picks.sort((x, y) => byGap(x, y) || (y.deal_pct ?? -1) - (x.deal_pct ?? -1));
     const shown = limit === 'all' ? picks : picks.slice(0, c.perPage);
     return `<div style="padding-top:6px">` +
       chips('tier', 'all', [['all', 'All tiers'], ['fire', '🔥 Brag'], ['green', '🟢 Value'], ['yellow', '🟡 Cheap']]) +
