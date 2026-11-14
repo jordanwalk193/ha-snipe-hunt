@@ -1588,6 +1588,19 @@ const PANELS = {
       `<pre class="brag">${esc(h.card)}</pre>`;
   }],
 
+  bragcard: ['Brag card', false, c => {
+    // The shareable picture: drawn after render by paintBrag (see the card's draw()).
+    const P = (c.d.brag || {}).periods;
+    if (!P) return empty('Update the bot to see this: it needs a version with brag card periods.');
+    const span = store('brag_span', P.week && (P.week.n || P.week.added) ? 'week' : 'month');
+    return `<div style="padding-top:10px"></div>` +
+      chips('brag_span', span, [['week', '📅 This week'], ['month', '🗓️ This month'], ['all', '🏆 All time']], span) +
+      `<canvas data-bragcard="${esc(span)}" data-v="${esc([(P[span] || {}).n, (P[span] || {}).saved, (P[span] || {}).added, ((c.d.trophies || {}).points)].join('-'))}" width="${BRAG_W}" height="${BRAG_H}" style="width:100%;max-width:460px;display:block;margin:10px auto 8px;border-radius:14px;box-shadow:0 6px 24px #0005"></canvas>` +
+      `<div class="row" style="justify-content:center"><span class="btn" role="button" data-do="brag-share" style="${tint('#c41e3a')}">📤 Share</span>` +
+      `<span class="btn" role="button" data-do="brag-save">💾 Save picture</span></div>` +
+      `<div class="muted" style="font-size:12px;text-align:center;margin-top:6px">Safe to share: card names, prices and percentages only. No sellers or item numbers.</div>`;
+  }],
+
   trophies: ['Trophy Case', false, c => {
     // Achievements from the real collection and the hunt (the bot's src/trophies.py).
     // Bronze, silver, gold; a tier once earned stays earned.
@@ -3026,6 +3039,128 @@ const STYLE = `
   .bp-moves { font-size: 11px; color: var(--secondary-text-color); margin-top: 2px; }
 `;
 
+
+// ------------------------------------------------------------ brag card picture
+// A 1080x1350 picture of the week / month / all time, drawn on the phone from the
+// snapshot (brag.periods, trophies) so it is always current. eBay's image server
+// allows cross-origin reads, so the canvas stays exportable for Share / Save.
+const BRAG_W = 1080, BRAG_H = 1350;
+const bragImg = url => new Promise(res => {
+  if (!url) return res(null);
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = () => res(im);
+  im.onerror = () => res(null);
+  im.src = String(url).replace(/s-l\d+\.(jpg|jpeg|png|webp)/i, 's-l500.$1') + (String(url).includes('?') ? '&' : '?') + 'sh=1';
+});
+const bragWrap = (g, text, maxW, maxLines) => {
+  const words = String(text || '').split(/\s+/), lines = [];
+  let line = '';
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (g.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '') + '…'; }
+  return lines;
+};
+const bragRound = (g, x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+const bragCover = (g, im, x, y, w, h, r) => {
+  g.save(); bragRound(g, x, y, w, h, r); g.clip();
+  if (im) {
+    const sc = Math.max(w / im.width, h / im.height), iw = im.width * sc, ih = im.height * sc;
+    g.drawImage(im, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+  } else { g.fillStyle = '#ffffff14'; g.fillRect(x, y, w, h); }
+  g.restore();
+};
+async function paintBrag(canvas, d, span) {
+  const P = ((d.brag || {}).periods || {})[span];
+  if (!P) return;
+  const t = d.trophies || {}, who = ((d.profile || {}).player) || 'Jordan Walker';
+  const token = Symbol();
+  canvas._paint = token;
+  const top = P.top || [];
+  const imgs = await Promise.all(top.slice(0, 5).map(x => bragImg(x.image)));
+  if (canvas._paint !== token) return;   // a newer paint started
+  const g = canvas.getContext('2d');
+  const F = (wt, px) => `${wt} ${px}px Roboto, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif`;
+  const bg = g.createLinearGradient(0, 0, BRAG_W * .4, BRAG_H);
+  bg.addColorStop(0, '#0c2340'); bg.addColorStop(.62, '#2a1030'); bg.addColorStop(1, '#5a0f1c');
+  g.fillStyle = bg; g.fillRect(0, 0, BRAG_W, BRAG_H);
+  g.save(); g.globalAlpha = .07; g.fillStyle = '#c41e3a';
+  for (let i = -2; i < 9; i++) { g.beginPath(); g.moveTo(i * 180, 0); g.lineTo(i * 180 + 90, 0); g.lineTo(i * 180 - 600, BRAG_H); g.lineTo(i * 180 - 690, BRAG_H); g.fill(); }
+  g.restore();
+  g.textBaseline = 'alphabetic';
+  // header
+  g.fillStyle = '#fff'; g.font = F(800, 38); g.fillText('SNIPE HUNT', 60, 92);
+  g.fillStyle = '#ffcdd2'; g.font = F(500, 30); g.fillText(P.label, 60, 136);
+  if (t.level) {
+    g.font = F(800, 30); const lw = g.measureText(t.level.toUpperCase()).width + 48;
+    bragRound(g, BRAG_W - 60 - lw, 62, lw, 56, 28); g.fillStyle = '#fbc02d'; g.fill();
+    g.fillStyle = '#3e2723'; g.fillText(t.level.toUpperCase(), BRAG_W - 60 - lw + 24, 101);
+  }
+  // headline
+  g.fillStyle = '#fbc02d'; g.font = F(900, 128);
+  g.fillText('$' + Math.round(P.saved || 0).toLocaleString(), 56, 300);
+  g.fillStyle = '#ffffffcc'; g.font = F(700, 32); g.fillText('SAVED UNDER VALUE', 62, 346);
+  const bits = [];
+  if (P.n) bits.push(`${P.n} steal${P.n === 1 ? '' : 's'}`);
+  if (P.pct != null) bits.push(`paid ${P.pct}% of value`);
+  if (P.added) bits.push(`${P.added} card${P.added === 1 ? '' : 's'} added`);
+  g.fillStyle = '#fff'; g.font = F(500, 34); g.fillText(bits.join(' · ') || 'Quiet stretch. The hunt goes on.', 62, 402);
+  // hero: the best steal
+  const hx = 60, hy = 450, hw = 400, hh = 560;
+  const best = top[0];
+  if (best) {
+    g.save(); g.shadowColor = '#000a'; g.shadowBlur = 40; g.shadowOffsetY = 12;
+    bragRound(g, hx, hy, hw, hh, 22); g.fillStyle = '#000'; g.fill(); g.restore();
+    bragCover(g, imgs[0], hx, hy, hw, hh, 22);
+    const rx = 510, rw = BRAG_W - rx - 60;
+    g.fillStyle = '#ef5350'; g.font = F(800, 28);
+    g.fillText(span === 'all' ? 'BEST STEAL EVER' : span === 'month' ? 'STEAL OF THE MONTH' : 'STEAL OF THE WEEK', rx, hy + 40);
+    g.fillStyle = '#fff'; g.font = F(800, 42);
+    // the bot's working notes ("(#485 per title)") aren't for sharing
+    const nameLines = bragWrap(g, String(best.card || '').replace(/\s*\([^)]*\bper (title|listing|seller)\)/ig, ''), rw, 4);
+    nameLines.forEach((l, i) => g.fillText(l, rx, hy + 100 + i * 52));
+    let y = hy + 100 + nameLines.length * 52 + 40;
+    g.font = F(600, 40); g.fillStyle = '#ffffffcc'; g.fillText('Paid', rx, y); g.fillText('Worth', rx, y + 58);
+    g.font = F(800, 40); g.fillStyle = '#fff';
+    g.fillText('$' + Number(best.paid).toFixed(2), rx + 130, y);
+    g.fillText('$' + Number(best.value).toFixed(2), rx + 130, y + 58);
+    const by = Math.min(y + 110, hy + hh - 130);
+    bragRound(g, rx, by, rw, 130, 26); g.fillStyle = '#c41e3a'; g.fill();
+    g.fillStyle = '#fff'; g.font = F(900, 92); g.textAlign = 'center';
+    g.fillText(`${best.off_pct}% OFF`, rx + rw / 2, by + 98); g.textAlign = 'left';
+  } else {
+    bragRound(g, hx, hy, BRAG_W - 120, hh, 22); g.fillStyle = '#ffffff10'; g.fill();
+    g.fillStyle = '#ffffffcc'; g.font = F(700, 46); g.textAlign = 'center';
+    g.fillText('No steals bought in this stretch yet.', BRAG_W / 2, hy + hh / 2 - 10);
+    g.font = F(500, 34); g.fillText('The bot is still hunting. 🎯', BRAG_W / 2, hy + hh / 2 + 46); g.textAlign = 'left';
+  }
+  // the runners-up
+  const rest = top.slice(1, 5);
+  if (rest.length) {
+    g.fillStyle = '#ffffffb3'; g.font = F(700, 26); g.fillText('ALSO IN THE HAUL', 60, 1064);
+    const tw = 216, th = 160, gap = (BRAG_W - 120 - 4 * tw) / 3;
+    rest.forEach((x, i) => {
+      const tx = 60 + i * (tw + gap), ty = 1082;
+      bragCover(g, imgs[i + 1], tx, ty, tw, th, 14);
+      g.font = F(800, 30); const lbl = `-${x.off_pct}%`, lw = g.measureText(lbl).width + 22;
+      bragRound(g, tx + 8, ty + th - 50, lw, 42, 12); g.fillStyle = '#2e7d32'; g.fill();
+      g.fillStyle = '#fff'; g.fillText(lbl, tx + 19, ty + th - 18);
+    });
+  }
+  // footer
+  g.fillStyle = '#ffffff22'; g.fillRect(60, 1268, BRAG_W - 120, 2);
+  const tr = t.trophies || [], cnt = k => tr.filter(x => x.tier === k).length;
+  g.fillStyle = '#fff'; g.font = F(700, 30);
+  g.font = F(700, 28);
+  g.fillText(tr.length ? `🏆 ${t.earned}   🥇${cnt('gold')}  🥈${cnt('silver')}  🥉${cnt('bronze')}` : '🏆 Snipe Hunt', 60, 1318);
+  g.fillStyle = '#ffffffb3'; g.font = F(600, 28); g.textAlign = 'right';
+  g.fillText(`${who} PC · found by my bot 🤖`, BRAG_W - 60, 1318); g.textAlign = 'left';
+  canvas.dataset.ready = '1';
+}
+
 // --------------------------------------------------------------------- card
 class SnipeHuntCard extends HTMLElement {
   constructor() {
@@ -3145,6 +3280,8 @@ class SnipeHuntCard extends HTMLElement {
     if (out === this._html && this.body.firstChild) return;   // nothing changed: leave the DOM be
     this._html = out;
     this.body.innerHTML = out;
+    const bragCanvas = this.body.querySelector('canvas[data-bragcard]');
+    if (bragCanvas) paintBrag(bragCanvas, this.feed.data || {}, bragCanvas.dataset.bragcard).catch(() => {});
     const input = this.body.querySelector('input[data-search]');
     if (input) {
       this.find(input);
@@ -3165,6 +3302,33 @@ class SnipeHuntCard extends HTMLElement {
     if (found) found.textContent = shown;
   }
 
+  bragOut(share) {
+    const cv = this.body.querySelector('canvas[data-bragcard]');
+    if (!cv || !cv.dataset.ready) return this.toast('The picture is still drawing. Try again in a second.');
+    const name = `snipe-hunt-${cv.dataset.bragcard}-${new Date().toISOString().slice(0, 10)}.png`;
+    const fallback = blob => {   // the phone apps' web views can't always download: open it to long-press save
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.rel = 'noopener';
+      try { a.click(); } catch (e) { window.open(url, '_blank'); }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    };
+    try {
+      cv.toBlob(blob => {
+        if (!blob) return this.toast('Could not make the picture.');
+        const file = new File([blob], name, {type: 'image/png'});
+        if (share && navigator.canShare && navigator.canShare({files: [file]})) {
+          navigator.share({files: [file], title: 'Snipe Hunt brag card'}).catch(err => { if (err && err.name !== 'AbortError') fallback(blob); });
+        } else {
+          fallback(blob);
+          if (share) this.toast('Sharing is not available here, so the picture was saved instead.');
+        }
+      }, 'image/png');
+    } catch (err) {
+      this.toast('A card picture blocked the export: ' + err.message);
+    }
+  }
+
   toast(message) {
     this.dispatchEvent(new CustomEvent('hass-notification', {detail: {message}, bubbles: true, composed: true}));
   }
@@ -3183,6 +3347,7 @@ class SnipeHuntCard extends HTMLElement {
     if (!el) return;
     ev.preventDefault();
     if (el.dataset.do === 'copy') return this.copy(el);
+    if (el.dataset.do === 'brag-share' || el.dataset.do === 'brag-save') return this.bragOut(el.dataset.do === 'brag-share');
     if (el.dataset.do === 'snipe') return this.snipe(el);
     if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value), this.feed.data || {});
     if (el.dataset.do === 'nav') {
@@ -3333,7 +3498,8 @@ class SnipeHuntStrategy {
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
       ]},
       trophies: {title: 'Trophies', path: 'trophies', icon: 'mdi:trophy', sections: [
-        {...section(heading('Trophy Case', 'mdi:trophy'), panel('trophies')), column_span: 3},
+        section(heading('Brag card', 'mdi:share-variant'), panel('bragcard')),
+        {...section(heading('Trophy Case', 'mdi:trophy'), panel('trophies')), column_span: 2},
       ]},
       binder: {title: 'Binder', path: 'binder', icon: 'mdi:view-grid', sections: [
         {...section(heading('The binder', 'mdi:view-grid'), panel('binder')), column_span: 3},
