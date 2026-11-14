@@ -186,7 +186,7 @@ const context = (card) => {
   noteSeen(all);
   return {
     d, s, card, picks, gixen, gixenOn, windowMs, unfolded, folded, fold, floor,
-    allPicks: all, covered, hiding, hidden: all.length - picks.length,
+    allPicks: all, covered, hiding, hidden: all.length - unfolded.length,
     inGixen: x => covered.has(x.item_id),
     gixenOff: d.gixen == null,
     hours: Number(s.need_snipe_hours) || 24,
@@ -371,7 +371,7 @@ const foldedStrip = c => {
   const n = c.folded.length;
   return `<details class="folded" style="margin-top:14px;border:1px dashed #8886;border-radius:12px;padding:6px 10px">
     <summary style="cursor:pointer;font-size:13px" class="muted">🧊 <b>${n}</b> small or close to market, folded away. Tap to look.</summary>
-    <div style="opacity:.75">${c.folded.slice().sort((x, y) => (x.share_now ?? shareNow(x)) - (y.share_now ?? shareNow(y))).map(p => pickLine(p, '', '')).join('')}</div></details>`;
+    <div style="opacity:.75">${c.folded.slice().sort((x, y) => byGap(x, y) || (x.share_now ?? shareNow(x)) - (y.share_now ?? shareNow(y))).map(p => pickLine(p, '', '')).join('')}</div></details>`;
 };
 
 // ---- the takeover: a jackpot fills the whole screen, whatever tab is open.
@@ -931,6 +931,12 @@ const buyNowSteals = c => {
   const jack = (c.d.jackpots || []).filter(p => !p.is_auction && !ids.has(p.item_id));
   return [...jack, ...live].sort((x, y) => !!y.jackpot - !!x.jackpot || shareNow(x) - shareNow(y));
 };
+// Picks a time-based list leaves out because they folded (small or close to market):
+// a muted line at its foot so nothing vanishes silently.
+const foldNote = (c, list, ...a) => {
+  const n = list({...c, picks: c.unfolded}, ...a).length - list(c, ...a).length;
+  return n > 0 ? `<div class="muted" style="font-size:12px;padding:8px 0 0">🧊 ${n} small or close to market folded away. ${navBtn('See them on Steals', 'steals')}</div>` : '';
+};
 // Picked auctions still live and not bid past the max: soonest ending first, or best deal at max.
 const endingSoon = (c, order = 'soon') => c.picks
   .filter(p => p.is_auction && p.end_time && msLeft(p.end_time) > 0 && !(room(p) < 0))
@@ -1222,23 +1228,23 @@ const PANELS = {
 
   buy_now: ['Buy now, think later', true, c => {
     const line = buyLine(c), all = buyNowSteals(c);
-    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * line)}% of its value or less right now. The bot checks every hour, and new ones push to your phone.`);
+    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * line)}% of its value or less right now. The bot checks every hour, and new ones push to your phone.`) + foldNote(c, buyNowSteals);
     const n = Number(c.card.config.count) || 8;
     return `<div class="muted strip-cap">${all.length} at ${Math.round(100 * line)}% of value or less, best first. Buy first, look closer after.</div>` +
-      strip(all.slice(0, n).map(tile), all.length > n ? `<div class="row">${navBtn(`${all.length - n} more on Steals`, 'steals')}</div>` : '');
+      strip(all.slice(0, n).map(tile), all.length > n ? `<div class="row">${navBtn(`${all.length - n} more on Steals`, 'steals')}</div>` : '') + foldNote(c, buyNowSteals);
   }],
 
   ending: ['Ending soonest', true, c => {
     // Picked auctions, the soonest ending first (or the best deal at max first).
     const order = store('ending_order', 'soon');
     const live = endingSoon(c), sorted = endingSoon(c, order);
-    if (!live.length) return empty('No picked auctions are live right now.');
+    if (!live.length) return empty('No picked auctions are live right now.') + foldNote(c, endingSoon);
     const n = Number(c.card.config.count) || 10;
     const hour = live.filter(p => msLeft(p.end_time) < HOUR).length;
     const unsniped = live.filter(p => p.snipe == null && msLeft(p.end_time) < c.windowMs).length;
     return `<div class="strip-head">${chips('ending_order', 'soon', [['soon', '⏱ Soonest'], ['best', '💎 Best deal']], order)}
       <div class="muted strip-cap">${live.length} live${hour ? ` · <b style="color:#e53935">${hour} in the last hour</b>` : ''}${c.gixenOn && unsniped ? ` · ${unsniped} with no snipe` : ''} ${gixenChip(c)}</div></div>` +
-      strip(sorted.slice(0, n).map(tile), live.length > n ? `<div class="row">${navBtn(`All ${live.length} on Steals`, 'steals')}</div>` : '');
+      strip(sorted.slice(0, n).map(tile), live.length > n ? `<div class="row">${navBtn(`All ${live.length} on Steals`, 'steals')}</div>` : '') + foldNote(c, endingSoon);
   }],
 
   summary: ['Right now', true, c => {
@@ -1465,24 +1471,24 @@ const PANELS = {
 
   ending_list: ['Ending soon', true, c => {
     const order = store('ending_order', 'soon'), all = endingSoon(c, order);
-    if (!all.length) return empty('No picked auctions are live right now.');
+    if (!all.length) return empty('No picked auctions are live right now.') + foldNote(c, endingSoon, order);
     const n = Number(c.card.config.count) || 25;
     return `<div class="strip-head">${chips('ending_order', 'soon', [['soon', '⏱ Soonest'], ['best', '💎 Best deal at max']], order)}
       <div class="muted strip-cap">Picked auctions not yet bid past the max.</div></div>` +
-      all.slice(0, n).map(p => pickLine(p, '', '')).join('') + (all.length > n ? empty(`${all.length - n} more under Every pick.`) : '');
+      all.slice(0, n).map(p => pickLine(p, '', '')).join('') + (all.length > n ? empty(`${all.length - n} more under Every pick.`) : '') + foldNote(c, endingSoon, order);
   }],
 
   buy_list: ['Buy now, think later', true, c => {
     const all = buyNowSteals(c);
-    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * buyLine(c))}% of its value or less right now.`);
+    if (!all.length) return empty(`No Buy It Now is at ${Math.round(100 * buyLine(c))}% of its value or less right now.`) + foldNote(c, buyNowSteals);
     return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Buy It Now at ${Math.round(100 * buyLine(c))}% of value or less, shipping included: the cheapest share first. Buy first, look closer after.</div>` +
-      all.map(p => pickLine(p, `<div class="rank" style="width:auto;padding:0 7px;border-radius:10px;color:#fff;background:#00a152">-${Math.round(100 * (1 - shareNow(p)))}%</div>`, '')).join('');
+      all.map(p => pickLine(p, `<div class="rank" style="width:auto;padding:0 7px;border-radius:10px;color:#fff;background:#00a152">-${Math.round(100 * (1 - shareNow(p)))}%</div>`, '')).join('') + foldNote(c, buyNowSteals);
   }],
 
   top_deals: ['Top 10 deals', true, c => {
     const top = steals(c.picks).slice(0, Number(c.card.config.count) || 10);
     if (!top.length) return empty('No live pick is 10% or more under its going rate right now.');
-    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Highest sweep score first (tier, deal stars, oddball, typo and new-card boosts), then the cheapest delivered.</div>` +
+    return `<div class="muted" style="font-size:12px;padding:10px 0 6px">Biggest dollar gap first (value minus what it costs delivered now), then the sweep score.</div>` +
       top.map((p, i) => pickLine(p,
         `<div class="rank" style="${i < 3 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>`,
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
