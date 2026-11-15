@@ -1242,7 +1242,7 @@ const WALL_CSS = `
   .wsw { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }`;
 const wallFetch = c => {
   const key = c.card.feed.entry || '', w = walls[key] || (walls[key] = {});
-  if (w.data || w.loading || !c.card._hass) return w;
+  if (w.data || w.loading || w.error || !c.card._hass) return w;   // a failure waits for "Try again"
   w.loading = true; w.error = null;
   c.card._hass.callWS({type: DOMAIN + '/wall', ...c.card.who()})
     .then(data => { w.data = data; })
@@ -2545,7 +2545,11 @@ const PANELS = {
 
   wall: ['The Walker Wall', false, c => {
     const w = wallFetch(c);
-    if (w.error) return empty(esc(w.error));
+    if (w.error) {
+      const old = /not found|404/i.test(w.error);
+      return empty(old ? 'The Walker Wall needs a newer bot: update it, then try again.' : "The wall couldn't load: " + esc(w.error))
+        + `<div style="margin-top:6px"><span class="btn" role="button" data-do="wallretry">Try again</span></div>`;
+    }
     if (!w.data) return empty('Loading the wall…');
     const key = c.card.feed.entry || '';
     const group = store('wall_group', 'year');
@@ -3550,6 +3554,11 @@ class SnipeHuntCard extends HTMLElement {
     if (el.dataset.do === 'copy') return this.copy(el);
     if (el.dataset.do === 'brag-share' || el.dataset.do === 'brag-save') return this.bragOut(el.dataset.do === 'brag-share');
     if (el.dataset.do === 'snipe') return this.snipe(el);
+    if (el.dataset.do === 'wallretry') {
+      const w = walls[this.feed.entry || ''];
+      if (w) w.error = null;
+      return this.feed.redraw();
+    }
     if (el.dataset.do === 'walltile') {
       const w = walls[this.feed.entry || ''];
       return openWallTile(w && w.data ? (w.data.cards || []).find(t => t.id === el.dataset.value) : null);
