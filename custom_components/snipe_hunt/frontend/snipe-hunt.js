@@ -1788,6 +1788,40 @@ const PANELS = {
     return `<div style="padding-top:8px"></div>` + chips('learn_tab', 's0', tabs, tab) + body;
   }],
 
+  season: ['Card year', false, c => {
+    // When his cards are usually cheap or pricey (season.md research, coloured) and the bot's own
+    // monthly index (dots, only months it has measured). For buying cheap, not for selling.
+    const s = c.d.season;
+    if (!s) return empty('Update the bot to see this: it needs a version with season.md.');
+    const COL = {cheap: '#2e7d32', soft: '#81c784', normal: '#b0bec5', warm: '#ffb74d', peak: '#e65100'};
+    const SAY = {cheap: 'Best time to buy', soft: 'Good time to buy', normal: 'Normal prices', warm: 'Pricier: be picky', peak: 'Priciest: hold off'};
+    const now = s.now || {}, cur = now.month, prog = s.progress || {measured: 0};
+    const moms = s.moments || [], momIn = m => moms.filter(x => x.month === m);
+    const mon = iso => { const d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString(undefined, {month: 'short', day: 'numeric'}); };
+    const cell = r => `<div style="text-align:center;min-width:0">
+        <div style="font-size:10px;height:14px;line-height:14px" class="muted">${r.measured ? `<b style="color:inherit">●${r.index}</b>` : ''}</div>
+        <div title="${esc(r.name + ': ' + (r.usually ? SAY[r.usually] : 'no research yet'))}" style="height:30px;border-radius:6px;${r.usually ? `background:${COL[r.usually]}` : 'border:1px dashed #8889'};${r.month === cur ? 'outline:2px solid #263238;outline-offset:1px' : ''}"></div>
+        <div style="font-size:11px;margin-top:2px;${r.month === cur ? 'font-weight:700' : ''}">${esc(r.name[0])}</div>
+        <div style="font-size:11px;height:14px">${r.month === cur ? '▲' : (momIn(r.month).length ? '⚡' : '')}</div></div>`;
+    const strip = `<div style="display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin:8px 0 2px">${s.months.map(cell).join('')}</div>`;
+    const legend = `<div class="muted" style="font-size:11px;line-height:1.6">${['cheap', 'soft', 'normal', 'warm', 'peak'].map(k => `<span style="white-space:nowrap;margin-right:8px"><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${COL[k]};margin-right:3px"></span>${SAY[k]}</span>`).join('')}<br>Colours are research. <b>●</b> = the bot's own sales that month (100 = normal, under 100 = cheaper). ⚡ = a Topps Now moment: hype weeks, wait them out.</div>`;
+    const curRow = s.months.find(r => r.month === cur) || {};
+    const head = `<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-top:8px"><b style="font-size:15px">${curRow.usually ? esc(curRow.name + ': ' + SAY[curRow.usually]) : 'No research for this month yet'}</b><span class="muted" style="font-size:12px;flex:none">Measured ${prog.measured}/12</span></div>` +
+      `<div style="font-size:13px;margin:2px 0 4px">${now.next ? (curRow.usually ? `${esc(SAY[curRow.usually])} until ${esc(mon(now.next.date))}, then ${esc(SAY[now.next.usually].toLowerCase())}` : esc(now.next.text)) + (now.next.event ? ` <span class="muted">(${esc(now.next.event)})</span>` : ` <span class="muted">(${now.next.days} days)</span>`) : 'No change in sight in the research.'}</div>` +
+      (curRow.tip ? `<div style="font-size:13px;margin-bottom:4px">💡 ${esc(curRow.tip)}</div>` : '');
+    const events = (s.events || []).slice(0, 5);
+    const ev = events.length ? cap('COMING UP') + events.map(e => `<div class="line" style="padding:4px 0;font-size:13px;display:flex;gap:10px"><span class="muted" style="flex:none;width:52px">${esc(mon(e.date))}</span><span><b>${esc(e.event)}</b>${e.effect ? `<br><span class="muted" style="font-size:12px">${esc(e.effect)}</span>` : ''}</span></div>`).join('') : '';
+    const months = `<details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px"><b>Month by month</b></summary>${s.months.map(r => `<div class="line" style="padding:6px 0;font-size:13px">
+        <div style="display:flex;justify-content:space-between;gap:8px"><span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${r.usually ? COL[r.usually] : 'transparent'};border:${r.usually ? 'none' : '1px dashed #888'};margin-right:5px"></span><b>${esc(r.name)}</b> · ${r.usually ? esc(SAY[r.usually]) : '<span class="muted">no research yet</span>'}</span>
+        <span class="muted" style="font-size:12px;flex:none">${r.measured ? `bot: <b>${r.index}</b> · ${r.n} sales` : (r.n ? `${r.n} sales, not enough yet` : 'not measured yet')}</span></div>
+        ${r.why ? `<div class="muted" style="font-size:12px;margin-top:2px">${esc(r.why)}</div>` : ''}${r.tip ? `<div style="font-size:12px;margin-top:2px">💡 ${esc(r.tip)}</div>` : ''}
+        ${momIn(r.month).map(x => `<div style="font-size:12px;margin-top:2px">⚡ Topps Now #${esc(x.card)}${x.event && x.event !== 'unconfirmed' ? ': ' + esc(x.event) : ''} (${esc(x.date)})</div>`).join('')}</div>`).join('')}</details>`;
+    const past = (s.past || []).length ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:13px"><b>Past prices</b> <span class="muted">· research, for reference</span></summary>${s.past.map(x => `<div class="line" style="padding:4px 0;font-size:12px;display:flex;justify-content:space-between;gap:8px"><span>${esc(x.card)} <span class="muted">· ${esc(x.date)}</span></span><span style="flex:none"><b>${esc(x.price)}</b> <span class="muted">${esc(x.source)}</span></span></div>`).join('')}</details>` : '';
+    const learning = prog.ready ? '' : `<div class="muted" style="font-size:12px;margin-top:10px">The bot is still learning its own year (${prog.measured} of 12 months measured). Until then the colours are research, not its numbers.</div>`;
+    return head + strip + legend + ev + months + past + learning +
+      `<div class="muted" style="font-size:12px;margin-top:6px;font-style:italic">${esc(s.caveat || '')}</div>`;
+  }],
+
   catalog: ['Every Walker card', false, c => {
     // Every card the market has seen (and every card you own), one row per card with its
     // parallels folded under it. Built hourly by the bot (catalog.py).
@@ -3486,7 +3520,8 @@ class SnipeHuntStrategy {
       ]},
       learn: {title: 'Learn', path: 'learn', icon: 'mdi:school-outline', sections: [
         {...section(heading('Walker card school', 'mdi:school-outline'), panel('learn')), column_span: 2},
-        section(heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')),
+        section(heading('Card year', 'mdi:calendar-month-outline'), panel('season'),
+          heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')),
       ]},
       collection: {title: 'Collection', path: 'collection', icon: 'mdi:cards', sections: [
         section(heading('Collection', 'mdi:cards', id('sensor', 'collection')), panel('collection'),
