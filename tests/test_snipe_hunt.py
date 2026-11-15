@@ -386,3 +386,20 @@ async def test_a_tap_on_an_alert_button_reaches_the_bot(hass, entry, bot):
     await hass.async_block_till_done()
     assert bot.actions == [{"action": "sniped", "item_id": "111111111111"},
                            {"action": "skip", "item_id": "111111111111"}]
+
+
+async def test_photo_command_forwards_to_the_bot(hass, entry, bot, hass_ws_client):
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "snipe_hunt/photo", "card_id": "12", "side": "front",
+                                    "image": "aGVsbG8="})
+    reply = await client.receive_json()
+    assert reply["success"] and reply["result"] == {"message": "Photo saved: waiting for the back",
+                                                    "status": "waiting for the back"}
+    assert bot.photos == [{"card_id": "12", "side": "front", "image": "aGVsbG8="}]
+    await client.send_json_auto_id({"type": "snipe_hunt/photo", "card_id": "999999", "side": "front",
+                                    "image": "aGVsbG8="})
+    reply = await client.receive_json()
+    assert not reply["success"] and "raw card" in reply["error"]["message"]
+    await client.send_json_auto_id({"type": "snipe_hunt/photo", "card_id": "12", "side": "left",
+                                    "image": "aGVsbG8="})
+    assert not (await client.receive_json())["success"]   # only front or back
