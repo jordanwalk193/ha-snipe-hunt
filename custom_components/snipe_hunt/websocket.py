@@ -43,6 +43,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_subscribe)
     websocket_api.async_register_command(hass, ws_options)
     websocket_api.async_register_command(hass, ws_action)
+    websocket_api.async_register_command(hass, ws_photo)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/subscribe", ENTRY: str})
@@ -95,3 +96,22 @@ async def ws_action(hass: HomeAssistant, connection, msg: dict[str, Any]) -> Non
         connection.send_error(msg["id"], "action_failed", str(err))
         return
     connection.send_result(msg["id"], {"message": message})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "snipe_hunt/photo",
+    vol.Required("card_id"): str,
+    vol.Required("side"): vol.In(["front", "back"]),
+    vol.Required("image"): str,   # base64 JPEG, already shrunk on the phone
+    ENTRY: str,
+})
+@websocket_api.async_response
+async def ws_photo(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """One side of a binder card for a grade check. The bot decides what it accepts."""
+    try:
+        coordinator = get_coordinator(hass, msg.get("entry"))
+        result = await coordinator.async_photo(msg["card_id"], msg["side"], msg["image"])
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "photo_failed", str(err))
+        return
+    connection.send_result(msg["id"], result)

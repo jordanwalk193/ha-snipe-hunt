@@ -91,6 +91,16 @@ class SnipeHuntCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Run a bot action and show its result everywhere at once."""
         return await self._async_send(self.client.async_action, {"action": action, **data})
 
+    async def async_photo(self, card_id: str, side: str, image: str) -> dict[str, Any]:
+        """Send one photo for a grade check; the bot checks the card in the background."""
+        try:
+            result = await self.client.async_photo({"card_id": card_id, "side": side, "image": image})
+        except SnipeHuntError as err:
+            raise HomeAssistantError(str(err)) from err
+        if not result.get("ok"):
+            raise HomeAssistantError(result.get("message") or "The bot refused the photo")
+        return {"message": result.get("message") or "Saved", "status": result.get("status")}
+
     async def async_set_setting(self, key: str, value: Any) -> None:
         """Change one bot setting."""
         await self._async_send(self.client.async_settings, {key: value})

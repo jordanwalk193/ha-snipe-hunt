@@ -60,6 +60,7 @@ class FakeBot:
         self.snapshot = copy.deepcopy(SNAPSHOT)
         self.actions: list[dict] = []
         self.settings: list[dict] = []
+        self.photos: list[dict] = []
         self.error: Exception | None = None
         self.by_url: dict[str, FakeBot] = {}   # other pretend bots, by address
 
@@ -76,6 +77,13 @@ class FakeBot:
         ok = data["action"] != "buy"
         return {"ok": ok, "message": "Done." if ok else "Unknown action 'buy'",
                 "snapshot": copy.deepcopy(self.snapshot)}
+
+    async def async_photo(self, data: dict) -> dict:
+        self.photos.append(data)
+        ok = data["card_id"] != "999999"
+        return {"ok": ok, "message": "Photo saved: waiting for the back" if ok
+                else "That card isn't a raw card in the collection",
+                "status": "waiting for the back" if ok else None}
 
     async def async_settings(self, changes: dict) -> dict:
         self.settings.append(changes)

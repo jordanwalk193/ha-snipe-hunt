@@ -597,13 +597,19 @@ const knowBlock = (x, d) => {
     }
   }
   const g = k.grade;
+  if (g && g.priced === false) {
+    rows.push(`<div class="kl"><span class="kh">GRADE CHECK</span>${esc(conditionLine(g.condition))}<div class="km">${esc(g.note || '')}</div></div>`);
+  }
   if (g && g.p10 != null) {
-    const fee = (d && d.grading_fee) ?? 25;
+    const bestG = g.best && g.graders ? g.graders[g.best] : null;
+    const fee = bestG ? bestG.fee : ((d && d.grading_fee) ?? 25);
     const say = g.ev == null ? null : {yes: ['worth grading', '#43a047'], maybe: ['maybe worth grading', '#b26a00'], no: ['not worth grading', '#e53935']}[g.verdict];
     const ns = n => `(from ${n || 0} sale${n === 1 ? '' : 's'})`;
-    rows.push(`<div class="kl"><span class="kh">GRADING</span>PSA 10 sells ~${money(g.p10)} <span class="km">${ns(g.n10)}</span>${g.p9 != null ? `, PSA 9 ~${money(g.p9)} <span class="km">${ns(g.n9)}</span>` : ''}.` +
+    const ten = GRADER_TEN[g.best] || 'PSA 10', nine = GRADER_NINE[g.best] || 'PSA 9';
+    rows.push(`<div class="kl"><span class="kh">GRADING${bestG ? ' · BEST AT ' + esc(String(g.best).toUpperCase()) + ' (' + esc(bestG.tier) + ')' : ''}</span>${ten} sells ~${money(g.p10)} <span class="km">${ns(g.n10)}</span>${g.p9 != null ? `, ${nine} ~${money(g.p9)} <span class="km">${ns(g.n9)}</span>` : ''}.` +
       `${g.ev != null ? ` Graded, likely worth ~${money(g.ev)}. After the ${money(fee)} fee, that's about ${g.gain < 0 ? '−' : '+'}${money(Math.abs(g.gain))} over the raw card's ${money(g.raw)}${say ? ': ' : '.'}` : ''}${say ? `<b style="color:${say[1]}">${say[0]}</b>` : ''}` +
-      `${g.rate != null ? `<div class="km">assumes about ${Math.round(g.rate * 100)}% grade a 10</div>` : ''}</div>`);
+      `${g.condition ? `<div class="km">from your photos: ${esc(conditionLine(g.condition))}; about ${Math.round((g.odds ?? g.rate) * 100)}% chance of a 10</div>`
+        : g.rate != null ? `<div class="km">assumes about ${Math.round(g.rate * 100)}% grade a 10 (photograph it for a closer look)</div>` : ''}</div>`);
   }
   const se = k.serial;
   if (se) {
@@ -615,7 +621,45 @@ const knowBlock = (x, d) => {
   if (k.first) rows.push(`<div class="kl">🌟 ${esc(k.first)}</div>`);
   return rows.length ? `<div class="sh-know"><div class="sh-cap" style="margin:10px 0 0">KNOW THIS CARD</div>${rows.join('')}</div>` : '';
 };
-const openSheet = (x, d) => {
+// Grade check (the bot's grade_check.py): a photo of each side, shrunk on the phone.
+const GC_HINT = 'out of the sleeve, flat on a plain surface, straight on';
+const GC_MEASURE = "couldn't measure: retake straight on, plain background";
+const GC_STATUS = {done: 'checked', checking: 'checking…', stale: 'new photo: checking again', failed: 'the check failed: try the photos again',
+  'waiting for the back': 'waiting for the back', 'waiting for the front': 'waiting for the front'};
+const pickPhoto = () => new Promise(ok => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*'; inp.setAttribute('capture', 'environment');
+  inp.onchange = () => ok(inp.files && inp.files[0]);
+  inp.click();
+});
+const shrinkPhoto = file => new Promise((ok, bad) => {
+  const url = URL.createObjectURL(file), img = new Image();
+  img.onload = () => {   // the browser has already turned it upright from its EXIF note
+    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+    URL.revokeObjectURL(url);
+    ok(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("That photo couldn't be read")); };
+  img.src = url;
+});
+const cornerWords = k => {
+  const all = [...(k.front || []), ...(k.back || [])];
+  return (all.includes('visible') ? 'corner wear showing' : all.includes('slight') ? 'a corner a touch soft' : 'corners clean')
+    + (k.confidence === 'low' ? ' (photo unclear)' : '');
+};
+const sideWords = (c, side) => c ? `${c.lr[0]}/${c.lr[1]} · ${c.tb[0]}/${c.tb[1]} ${side}` : null;
+const conditionLine = c => {
+  if (!c) return '';
+  const cen = c.front ? 'centering ' + sideWords(c.front, 'front') + (c.back ? ', ' + sideWords(c.back, 'back') : ' (back: ' + GC_MEASURE + ')')
+    : c.back ? `front: ${GC_MEASURE}; centering ${sideWords(c.back, 'back')}` : GC_MEASURE;
+  return `${cen} · ${c.corners ? cornerWords(c.corners) : 'corners unknown'}`;
+};
+const GRADER_TEN = {psa: 'PSA 10', bgs: 'BGS 9.5', sgc: 'SGC 10'};
+const GRADER_NINE = {psa: 'PSA 9', bgs: 'BGS 9', sgc: 'SGC 9'};
+const openSheet = (x, d, cx) => {
   closeSheet();
   if (!x) return;
   const ring = [...x.f].map(f => POCKET_RING[f]).find(Boolean);
@@ -642,6 +686,10 @@ const openSheet = (x, d) => {
       ${h.length ? `<div class="sh-cap">${h.length > 1 ? 'RECENT SALES OF THIS CARD · DASHED = WHAT YOU PAID' : 'THE ONE SALE OF THIS CARD ON RECORD'}</div>${h.length > 1 ? sparkSvg(h, x.p) : ''}` +
         h.slice(0, 6).map(s => `<a class="sh-sale" href="https://www.ebay.com/itm/${esc(s[2])}" data-sh="open"><span>${esc(s[0])}</span><b>${money(s[1])}</b></a>`).join('')
         : '<div class="sh-meta" style="margin-top:14px">No sales of this card in the ledger yet, so it is valued at what you paid.</div>'}
+      ${x.gc ? `<div class="sh-cap">GRADE CHECK${x.k && x.k.check ? ' · ' + esc(GC_STATUS[x.k.check] || x.k.check) : ''}</div>
+        <div class="sh-meta">Photograph each side ${GC_HINT}. The bot measures the centering and looks at the corners.</div>
+        <div class="sh-btns" style="margin-top:6px"><span class="sh-btn" data-sh="photo" data-side="front">📷 Front</span><span class="sh-btn" data-sh="photo" data-side="back">📷 Back</span></div>
+        <div class="sh-meta sh-gc" aria-live="polite"></div>` : ''}
       <div class="sh-btns">
         ${x.e ? `<a class="sh-btn" href="https://www.ebay.com/itm/${esc(x.e)}" data-sh="open">Your listing ↗</a>` : ''}
         <a class="sh-btn ghost" href="${esc(look)}" data-sh="open">Find another on eBay ↗</a>
@@ -663,6 +711,19 @@ const openSheet = (x, d) => {
     if (!t) return;
     if (t.dataset.sh === 'close' && t !== ev.target && !ev.target.closest('.sh-btn')) return;   // a tap inside the sheet isn't a tap outside it
     ev.preventDefault();
+    if (t.dataset.sh === 'photo') {
+      const say = m => { const n = el.querySelector('.sh-gc'); if (n) n.textContent = m; };
+      if (!cx || !cx.hass) return say('Open this card from the dashboard to photograph it.');
+      const side = t.dataset.side;
+      pickPhoto().then(file => {
+        if (!file) return;
+        say(`Sending the ${side}…`);
+        return shrinkPhoto(file)
+          .then(image => cx.hass.callWS({type: DOMAIN + '/photo', card_id: String(x.id), side, image, ...(cx.who || {})}))
+          .then(res => { t.textContent = `✓ ${side[0].toUpperCase() + side.slice(1)}`; say(res.status === 'checking' ? 'Both sides in: checking now. The result shows here in a minute or two.' : res.message); });
+      }).catch(err => say((err && err.message) || 'That did not work'));
+      return;
+    }
     if (t.dataset.sh === 'open') window.open(t.href, '_blank', 'noopener'); else closeSheet();
   });
   document.addEventListener('keydown', sheetKey);
@@ -2246,16 +2307,30 @@ const PANELS = {
   grading: ['Worth grading', false, c => {
     const g = c.d.grading;
     if (!g) return empty('Not available from this bot.');
-    if (!g.length) return empty('No card clearly earns its grading fee from past PSA 10 and 9 sales.');
+    const b = c.d.grading_batch;
+    const top = b ? `<div class=warn style="background:color-mix(in srgb,#2e7d32 14%,transparent)"><b>Worth sending now:</b> ${b.n} card${b.n === 1 ? '' : 's'} to ${esc(String(b.grader).toUpperCase())} (${esc(b.tier)}${b.single ? '' : `, ${b.min}-card minimum`}), about <b>${money(b.gain)}</b> expected gain after ${money(b.fee_total)} in fees.</div>`
+      : `<div class=muted style="font-size:12px;margin-bottom:6px">No submission worth sending yet. Photograph a card (open it, then 📷 Front and 📷 Back) to judge it by its own centering and corners.</div>`;
+    if (!g.length) return top + empty('No card clearly earns its grading fee from past graded sales.');
     const fee = c.d.grading_fee;
-    return g.map(x => {
-      const yes = x.verdict === 'yes', art = c.art.get(String(x.id));
-      return `<div class=line${art ? ` role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}"` : ''} style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px${art ? ';cursor:pointer' : ''}">${art ? cardPic(art) : ownThumb(c, null)}
+    return top + g.map(x => {
+      const art = c.art.get(String(x.id));
+      const open = ` role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}"`;
+      if (x.priced === false) {
+        return `<div class=line${open} style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px;cursor:pointer">${art ? cardPic(art) : ownThumb(c, null)}
+          <div style="flex:1;min-width:0"><b>${esc(x.card)}</b><div style="font-size:12px">${esc(conditionLine(x.condition))}</div>
+          <div class=muted style="font-size:12px">${esc(x.note || '')}</div></div></div>`;
+      }
+      const yes = x.verdict === 'yes', bestG = x.best && x.graders ? x.graders[x.best] : null;
+      const ten = GRADER_TEN[x.best] || 'PSA 10', nine = GRADER_NINE[x.best] || 'PSA 9';
+      const feeNow = bestG ? bestG.fee : fee;
+      const say = yes ? pill('likely', '#2e7d32') : x.verdict === 'maybe' ? pill('maybe', '#455a64') : pill('not worth it', '#e53935');
+      return `<div class=line${open} style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px;cursor:pointer">${art ? cardPic(art) : ownThumb(c, null)}
         <div style="flex:1;min-width:0"><b>${esc(x.card)}</b>
-        <div style="font-size:12px">${money(x.raw)} raw → ~<b>${money(x.ev)}</b> graded <span class=muted>· ${x.gain < 0 ? '−' : '+'}${money(Math.abs(x.gain))} after the ${fee != null ? money(fee) : ''} fee</span></div>
-        <div class=muted style="font-size:12px">PSA 10: ${money(x.p10)} (${x.n10} sale${x.n10 === 1 ? '' : 's'}) · PSA 9: ${x.p9 != null ? money(x.p9) + ' (' + x.n9 + ')' : 'none'} · gem rate ${Math.round(x.rate * 100)}%</div></div>
-        <div style="text-align:right;flex:none"><b style="color:#2e7d32">+${money(x.gain)}</b><div>${pill(yes ? 'likely' : 'maybe', yes ? '#2e7d32' : '#455a64')}</div></div></div>`;
-    }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Expected graded value; the gain subtracts the raw card's value and the grading fee. From the ledger's PSA 10 and 9 sales of sibling copies and typical gem rates. A rough guide from past sales, not a promise.</div>`;
+        <div style="font-size:12px">${money(x.raw)} raw → ~<b>${money(x.ev)}</b> graded <span class=muted>· ${x.gain < 0 ? '−' : '+'}${money(Math.abs(x.gain))} after the ${feeNow != null ? money(feeNow) : ''} fee${bestG ? ' at ' + esc(String(x.best).toUpperCase()) + ' ' + esc(bestG.tier) : ''}</span></div>
+        <div class=muted style="font-size:12px">${ten}: ${money(x.p10)} (${x.n10} sale${x.n10 === 1 ? '' : 's'}) · ${nine}: ${x.p9 != null ? money(x.p9) + ' (' + x.n9 + ')' : 'none'} · ${x.condition ? 'from your photos ' + Math.round((x.odds ?? x.rate) * 100) + '% chance of a 10' : 'gem rate ' + Math.round(x.rate * 100) + '% (no photos yet)'}</div>
+        ${x.condition ? `<div class=muted style="font-size:12px">${esc(conditionLine(x.condition))}</div>` : ''}</div>
+        <div style="text-align:right;flex:none"><b style="color:${x.gain >= 0 ? '#2e7d32' : '#e53935'}">${x.gain < 0 ? '−' : '+'}${money(Math.abs(x.gain))}</b><div>${say}</div></div></div>`;
+    }).join('') + `<div class=muted style="font-size:12px;margin-top:8px">Expected graded value; the gain subtracts the raw card's value and the grading fee of the cheapest tier taking cards now (grading.toml on the bot). From the ledger's graded sales of sibling copies, and your photos when you've taken them. A rough guide, not a promise.</div>`;
   }],
 
   closes: ['Where steals happen', false, c => {
@@ -3388,7 +3463,8 @@ class SnipeHuntCard extends HTMLElement {
     if (el.dataset.do === 'copy') return this.copy(el);
     if (el.dataset.do === 'brag-share' || el.dataset.do === 'brag-save') return this.bragOut(el.dataset.do === 'brag-share');
     if (el.dataset.do === 'snipe') return this.snipe(el);
-    if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value), this.feed.data || {});
+    if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value), this.feed.data || {},
+      {hass: this._hass, who: this.who()});
     if (el.dataset.do === 'nav') {
       const base = location.pathname.split('/').slice(0, 2).join('/');
       history.pushState(null, '', base + '/' + el.dataset.path);
