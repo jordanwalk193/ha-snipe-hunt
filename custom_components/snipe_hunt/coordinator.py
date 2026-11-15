@@ -91,6 +91,13 @@ class SnipeHuntCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Run a bot action and show its result everywhere at once."""
         return await self._async_send(self.client.async_action, {"action": action, **data})
 
+    async def async_wall(self) -> dict[str, Any]:
+        """The Walker Wall, straight from the bot (not part of the polled snapshot)."""
+        try:
+            return await self.client.async_wall()
+        except SnipeHuntError as err:
+            raise HomeAssistantError(str(err)) from err
+
     async def async_photo(self, card_id: str, side: str, image: str) -> dict[str, Any]:
         """Send one photo for a grade check; the bot checks the card in the background."""
         try:

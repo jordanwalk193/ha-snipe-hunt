@@ -61,6 +61,7 @@ class FakeBot:
         self.actions: list[dict] = []
         self.settings: list[dict] = []
         self.photos: list[dict] = []
+        self.walls = 0
         self.error: Exception | None = None
         self.by_url: dict[str, FakeBot] = {}   # other pretend bots, by address
 
@@ -77,6 +78,11 @@ class FakeBot:
         ok = data["action"] != "buy"
         return {"ok": ok, "message": "Done." if ok else "Unknown action 'buy'",
                 "snapshot": copy.deepcopy(self.snapshot)}
+
+    async def async_wall(self) -> dict:
+        self.walls += 1
+        return {"cards": [{"id": "1", "card": "A card", "owned": True}], "groups": {"year": []},
+                "owned": 1, "total": 1}
 
     async def async_photo(self, data: dict) -> dict:
         self.photos.append(data)

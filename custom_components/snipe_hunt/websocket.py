@@ -44,6 +44,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_options)
     websocket_api.async_register_command(hass, ws_action)
     websocket_api.async_register_command(hass, ws_photo)
+    websocket_api.async_register_command(hass, ws_wall)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/subscribe", ENTRY: str})
@@ -115,3 +116,15 @@ async def ws_photo(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None
         connection.send_error(msg["id"], "photo_failed", str(err))
         return
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/wall", ENTRY: str})
+@websocket_api.async_response
+async def ws_wall(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """The Walker Wall for its dashboard panel."""
+    try:
+        wall = await get_coordinator(hass, msg.get("entry")).async_wall()
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "wall_failed", str(err))
+        return
+    connection.send_result(msg["id"], wall)

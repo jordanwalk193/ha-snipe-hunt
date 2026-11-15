@@ -55,6 +55,10 @@ class SnipeHuntClient:
         """Run one of the bot's actions. Returns ok, message and a fresh snapshot."""
         return await self._request("POST", "/api/action", data)
 
+    async def async_wall(self) -> dict[str, Any]:
+        """The Walker Wall: every card that has sold, fetched only when its panel opens."""
+        return await self._request("GET", "/api/wall")
+
     async def async_photo(self, data: dict[str, Any]) -> dict[str, Any]:
         """One side of a binder card for a grade check. Returns ok, message and status."""
         return await self._request("POST", "/api/photo", data)
