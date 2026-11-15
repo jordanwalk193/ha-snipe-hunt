@@ -1214,6 +1214,71 @@ const fileRow = (c, e, titles) => {
       ${note ? `<div class="bp-moves">${note}</div>` : ''}</span>${fileBtn(c, e)}</div>`;
 };
 
+// ---------------------------------------------------------------- the Walker Wall
+// Every card the ledger has seen sell (the bot's wall.py), fetched once a visit when
+// the panel first draws: it is too big for the regular snapshot.
+const walls = {};   // feed entry -> {data, loading, error}
+const WALL_GROUPS = [['year', 'Year'], ['product', 'Product'], ['colour', 'Colour']];
+const WALL_PAINT = {gold: '#c9a227', orange: '#f57c00', red: '#d32f2f', blue: '#1e63c9', green: '#2e9d57', purple: '#7b1fa2',
+  pink: '#d81b60', black: '#263238', aqua: '#00acc1', silver: '#90a4ae', yellow: '#fbc02d', teal: '#00897b', base: '#9e9e9e'};
+const WALL_CSS = `
+  .wbar { margin: 10px 0 14px; }
+  .wbar h4 { margin: 0 0 5px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+  .wbar h4 span { color: var(--secondary-text-color, #888); font-weight: 400; }
+  .wmeter { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--primary-text-color, #000) 10%, transparent); margin-bottom: 6px; overflow: hidden; }
+  .wmeter i { display: block; height: 100%; background: #43a047; }
+  .wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(28px, 1fr)); gap: 3px; }
+  @media (min-width: 600px) { .wgrid { grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); } }
+  .wt { aspect-ratio: 5 / 7; border-radius: 3px; overflow: hidden; cursor: pointer; position: relative;
+    background: var(--wc, #9e9e9e); display: block; }
+  .wt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .wt.no { filter: grayscale(1) opacity(.35); }
+  .wt.gold { outline: 2px solid #c9a227; outline-offset: -1px; }
+  .wt.ph::after { content: attr(data-y); position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 9px; font-weight: 700; color: #fff; }
+  .wt.glow { animation: wglow 1.2s ease-out 2; z-index: 1; }
+  @keyframes wglow { 0% { transform: scale(1); box-shadow: 0 0 0 0 #ffd54f; } 40% { transform: scale(1.35); box-shadow: 0 0 14px 6px #ffd54f; } 100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; } }
+  @media (prefers-reduced-motion: reduce) { .wt.glow { animation: none; outline: 2px solid #ffd54f; } }
+  .wsw { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 8px; }`;
+const wallFetch = c => {
+  const key = c.card.feed.entry || '', w = walls[key] || (walls[key] = {});
+  if (w.data || w.loading || !c.card._hass) return w;
+  w.loading = true; w.error = null;
+  c.card._hass.callWS({type: DOMAIN + '/wall', ...c.card.who()})
+    .then(data => { w.data = data; })
+    .catch(err => { w.error = (err && err.message) || "The wall couldn't load"; })
+    .finally(() => { w.loading = false; c.card.feed.redraw(); });
+  return w;
+};
+// Tiles owned at the last visit: a tile newly lit since then glows once.
+const wallSeen = key => { try { return new Set(JSON.parse(localStorage.getItem('ws_wall_owned:' + key) || 'null') || []); } catch (e) { return null; } };
+const wallKeep = (key, ids) => { try { localStorage.setItem('ws_wall_owned:' + key, JSON.stringify(ids)); } catch (e) { /* glows again next visit */ } };
+const openWallTile = t => {
+  closeSheet();
+  if (!t) return;
+  const big = t.image ? String(t.image).replace(/s-l\d+/, 's-l800') : null;
+  const look = 'https://www.ebay.com/sch/i.html?_sacat=261328&_sop=15&_nkw=' + encodeURIComponent(t.card.replace(/[#/]/g, ' '));
+  const el = document.createElement('div');
+  el.id = SHEET_ID;
+  el.innerHTML = `<style>${SHEET_CSS}</style><div class="sh-back" data-sh="close"><div class="sh" role="dialog" aria-label="${esc(t.card)}">
+    <div class="sh-stage"><div class="sh-card">${big ? `<img src="${esc(big)}" alt="">` : '<div class="sh-none">🃏</div>'}</div></div>
+    <div style="min-width:0">
+      <div class="sh-name">${esc(t.card)}</div>
+      <div class="sh-meta">${t.owned ? `<b style="color:#43a047">Yours${t.copies > 1 ? ` (${t.copies} copies)` : ''}</b>` : '<b>Not yet</b>'}
+        ${t.last ? `<br>Last sale ${money(t.last.price)} on ${esc(t.last.at)}` : '<br>No sale on record yet'}${t.value != null ? `<br>Worth about ${money(t.value)} (median of its newest sales)` : ''}</div>
+      <div class="sh-btns"><a class="sh-btn" href="${esc(look)}" data-sh="open">Search eBay ↗</a><span class="sh-btn ghost" data-sh="close">Close</span></div>
+    </div></div></div>`;
+  el.addEventListener('click', ev => {
+    const x = ev.target.closest('[data-sh]');
+    if (!x) return;
+    if (x.dataset.sh === 'close' && x !== ev.target && !ev.target.closest('.sh-btn')) return;
+    ev.preventDefault();
+    if (x.dataset.sh === 'open') window.open(x.href, '_blank', 'noopener'); else closeSheet();
+  });
+  document.addEventListener('keydown', sheetKey);
+  document.body.appendChild(el);
+};
+
 const PANELS = {
   hero: ['Command center', true, c => {
     // The top of Tonight: who the bot is hunting, the numbers that matter, the
@@ -2478,6 +2543,25 @@ const PANELS = {
     }).join('') : empty('No losses on record.')) + `</div>`;
   }],
 
+  wall: ['The Walker Wall', false, c => {
+    const w = wallFetch(c);
+    if (w.error) return empty(esc(w.error));
+    if (!w.data) return empty('Loading the wall…');
+    const key = c.card.feed.entry || '';
+    const group = store('wall_group', 'year');
+    const bars = (w.data.groups || {})[group] || [];
+    const byId = new Map((w.data.cards || []).map(t => [t.id, t]));
+    const before = wallSeen(key), owned = (w.data.cards || []).filter(t => t.owned).map(t => t.id);
+    const fresh = before ? new Set(owned.filter(id => !before.has(id))) : new Set();
+    wallKeep(key, owned);
+    const tile = t => `<span class="wt${t.owned ? '' : ' no'}${t.gold ? ' gold' : ''}${fresh.has(t.id) ? ' glow' : ''}" role="button" tabindex="0" data-do="walltile" data-value="${esc(t.id)}" data-y="${esc(t.year || '?')}" style="--wc:${WALL_PAINT[t.colour] || WALL_PAINT.base}" title="${esc(t.card)}">${t.image ? `<img loading="lazy" alt="" src="${esc(t.image)}">` : ''}</span>`;
+    const head = `<div class="muted" style="font-size:13px">${w.data.owned} of ${w.data.total} Walker cards that have sold are yours (${Math.round(100 * w.data.owned / Math.max(1, w.data.total))}%). Grey ones are still out there; gold borders are each year's dearest.</div>
+      <div class="wsw">${WALL_GROUPS.map(([k, label]) => `<span class="btn" role="button" data-do="set" data-key="wall_group" data-value="${k}" style="${tint(k === group ? '#1e88e5' : '#90a4ae')}">${label}</span>`).join('')}</div>`;
+    return `<style>${WALL_CSS}</style>` + head + bars.map(b => `<div class="wbar"><h4>${esc(b.key === 'base' ? 'Base (no colour)' : b.key.charAt(0).toUpperCase() + b.key.slice(1))}<span>${b.owned} of ${b.n} · ${b.pct}%</span></h4>
+      <div class="wmeter"><i style="width:${b.pct}%"></i></div>
+      <div class="wgrid">${b.tiles.map(id => byId.get(id)).filter(Boolean).map(tile).join('')}</div></div>`).join('');
+  }],
+
   collection: ['Collection', false, c => {
     const a = c.d.collection;
     const budget = Number(c.s.monthly_budget) || 0;
@@ -3393,6 +3477,10 @@ class SnipeHuntCard extends HTMLElement {
     if (out === this._html && this.body.firstChild) return;   // nothing changed: leave the DOM be
     this._html = out;
     this.body.innerHTML = out;
+    // a wall tile whose picture is gone shows its colour and year instead
+    this.body.querySelectorAll('.wt img').forEach(img => img.addEventListener('error', () => {
+      const t = img.parentNode; img.remove(); if (t) t.classList.add('ph');
+    }, {once: true}));
     const bragCanvas = this.body.querySelector('canvas[data-bragcard]');
     if (bragCanvas) paintBrag(bragCanvas, this.feed.data || {}, bragCanvas.dataset.bragcard).catch(() => {});
     const input = this.body.querySelector('input[data-search]');
@@ -3462,6 +3550,10 @@ class SnipeHuntCard extends HTMLElement {
     if (el.dataset.do === 'copy') return this.copy(el);
     if (el.dataset.do === 'brag-share' || el.dataset.do === 'brag-save') return this.bragOut(el.dataset.do === 'brag-share');
     if (el.dataset.do === 'snipe') return this.snipe(el);
+    if (el.dataset.do === 'walltile') {
+      const w = walls[this.feed.entry || ''];
+      return openWallTile(w && w.data ? (w.data.cards || []).find(t => t.id === el.dataset.value) : null);
+    }
     if (el.dataset.do === 'card') return openSheet(((this.feed.data || {}).cards || []).find(x => String(x.id) === el.dataset.value), this.feed.data || {},
       {hass: this._hass, who: this.who()});
     if (el.dataset.do === 'nav') {
@@ -3611,6 +3703,7 @@ class SnipeHuntStrategy {
         section(heading("What's missing", 'mdi:star-box-multiple'), panel('missing'), heading('Worth grading', 'mdi:medal-outline'), panel('grading')),
         {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
+        {...section(heading('The Walker Wall', 'mdi:view-comfy'), panel('wall')), column_span: 3},
       ]},
       trophies: {title: 'Trophies', path: 'trophies', icon: 'mdi:trophy', sections: [
         section(heading('Brag card', 'mdi:share-variant'), panel('bragcard')),

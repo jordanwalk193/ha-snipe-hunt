@@ -403,3 +403,10 @@ async def test_photo_command_forwards_to_the_bot(hass, entry, bot, hass_ws_clien
     await client.send_json_auto_id({"type": "snipe_hunt/photo", "card_id": "12", "side": "left",
                                     "image": "aGVsbG8="})
     assert not (await client.receive_json())["success"]   # only front or back
+
+
+async def test_wall_command_forwards_to_the_bot(hass, entry, bot, hass_ws_client):
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "snipe_hunt/wall"})
+    reply = await client.receive_json()
+    assert reply["success"] and reply["result"]["total"] == 1 and bot.walls == 1
