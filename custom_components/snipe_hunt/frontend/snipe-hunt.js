@@ -653,7 +653,8 @@ const cornerWords = k => {
 const sideWords = (c, side) => c ? `${c.lr[0]}/${c.lr[1]} · ${c.tb[0]}/${c.tb[1]} ${side}` : null;
 const conditionLine = c => {
   if (!c) return '';
-  const cen = c.front ? 'centering ' + [sideWords(c.front, 'front'), sideWords(c.back, 'back')].filter(Boolean).join(', ') : GC_MEASURE;
+  const cen = c.front ? 'centering ' + sideWords(c.front, 'front') + (c.back ? ', ' + sideWords(c.back, 'back') : ' (back: ' + GC_MEASURE + ')')
+    : c.back ? `front: ${GC_MEASURE}; centering ${sideWords(c.back, 'back')}` : GC_MEASURE;
   return `${cen} · ${c.corners ? cornerWords(c.corners) : 'corners unknown'}`;
 };
 const GRADER_TEN = {psa: 'PSA 10', bgs: 'BGS 9.5', sgc: 'SGC 10'};
