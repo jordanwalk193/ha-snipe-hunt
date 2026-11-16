@@ -345,8 +345,23 @@ const fastTag = p => p.fast ? pill('⚡ Fast lane', '#f57c00') + ' ' : '';
 // the loudest thing on the dashboard, because it won't be there for long.
 const jackpotPill = p => p.jackpot ? pill('🚨 JACKPOT', '#d50000') + ' ' : '';
 // An auction of a $50+ card (the bot's long_shot_value): the bot's max almost never wins there.
+const payDay = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}) : '';
+// A pick that ends inside an open invoice's combine window ships at the seller's extra-card rate.
+const invoicePill = p => p.invoice ? `<span title="${esc(p.invoice.seller)}: rides your open invoice (wins ending by ${esc(payDay(p.invoice.combine_until))} combine); pay by ${esc(payDay(p.invoice.pay_by))}">${pill('📦 +$' + Number(p.invoice.add_ship ?? 0).toFixed(2) + ' ship w/ invoice · pay ' + esc(payDay(p.invoice.pay_by).split(',')[0]), '#2e7d32')}</span> ` : '';
+// The seller's own pay-by date on To do, where it came from, and their words when read.
+const TERMS_SOURCE = {'your note': 'your note', listing: 'from their listing', default: 'default 3 days'};
+const payByLine = g => {
+  if (!g.pay_by) return '';
+  const t = g.terms || {};
+  const src = TERMS_SOURCE[t.source] || t.source || '';
+  const ship = t.add_ship != null && t.combine_until ? ` · +$${Number(t.add_ship).toFixed(2)} each extra card until ${esc(payDay(t.combine_until))}` : '';
+  const head = `<b style="color:var(--primary-text-color)">pay by ${esc(payDay(g.pay_by))}</b>${ship} <span style="opacity:.75">(${esc(src)})</span>`;
+  return t.excerpt
+    ? `<details style="font-size:12px;margin-top:3px"><summary class="muted" style="cursor:pointer">${head}</summary><div class="muted" style="font-size:11px;line-height:1.4;margin-top:3px;white-space:pre-wrap">${esc(t.excerpt)}</div></details>`
+    : `<div class="muted" style="font-size:12px;margin-top:3px">${head}</div>`;
+};
 const longShotPill = p => p.long_shot ? `<span title="Cards this dear rarely go for the bot's max: worth a snipe, not a sure thing.">${pill('🎲 Long shot', '#8e24aa')}</span> ` : '';
-const jackpotPay = p => Number(p.jackpot_bin && p.bin_price ? p.bin_price : (p.bid_now ?? p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const jackpotPay = p => Number(p.jackpot_bin && p.bin_price ? p.bin_price : (p.bid_now ?? p.price)) + (p.combined_ship ? Number(p.combined_add_ship ?? 0) : Number(p.shipping ?? 5));
 const jackpotBanner = c => {
   const live = (c.d.jackpots || []).filter(p => !(p.is_auction && p.end_time && msLeft(p.end_time) <= 0));
   if (!live.length) return '';
@@ -835,7 +850,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${invoicePill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
@@ -901,9 +916,9 @@ const searchBtn = c => c.d.status.searching ? pill('Searching eBay…', '#1e88e5
 // name: [label, redraw every 30 s for the countdowns?, draw]
 // ------------------------------------------------------- tiles (Tonight strips)
 // What you would pay now, delivered: the asking price, or today's bid, plus shipping.
-const payNow = p => Number(p.bid_now ?? p.price) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const payNow = p => Number(p.bid_now ?? p.price) + (p.combined_ship ? Number(p.combined_add_ship ?? 0) : Number(p.shipping ?? 5));
 const shareNow = p => p.value ? payNow(p) / Number(p.value) : null;
-const shareAtMax = p => p.value && p.max != null ? (Number(p.max) + (p.combined_ship ? 0 : Number(p.shipping ?? 5))) / Number(p.value) : null;
+const shareAtMax = p => p.value && p.max != null ? (Number(p.max) + (p.combined_ship ? Number(p.combined_add_ship ?? 0) : Number(p.shipping ?? 5))) / Number(p.value) : null;
 const clockColor = ms => ms < HOUR ? '#e53935' : ms < 3 * HOUR ? '#fb8c00' : ms < 12 * HOUR ? '#f9a825' : '#546e7a';
 const offMeter = share => {
   if (share == null) return '';
@@ -1089,7 +1104,7 @@ const boardRows = c => {
     const mine = s ? s.max_bid : (p && p.snipe != null ? p.snipe : (p && p.marked && p.marked.max ? Number(p.marked.max) : (t ? t.snipe : null)));
     const botMax = p ? p.max : (s ? s.bot_max : t.snipe);
     const value = p ? p.value : (s && s.check && s.check.value != null ? s.check.value : (t ? t.value : null));
-    const ship = p ? (p.combined_ship ? 0 : Number(p.shipping ?? 5)) : (t ? Number(t.shipping ?? 5) : 0);
+    const ship = p ? (p.combined_ship ? Number(p.combined_add_ship ?? 0) : Number(p.shipping ?? 5)) : (t ? Number(t.shipping ?? 5) : 0);
     let state = 'watch';
     if ((s && s.outbid) || (mine != null && now >= Number(mine))) state = 'outbid';
     else if (s && ((s.doubts || []).some(d => SERIOUS_DOUBT.includes(d.kind)) || costly(s))) state = 'check';
@@ -1104,7 +1119,7 @@ const boardRows = c => {
 };
 // What a pick costs you, delivered, on the steal map: the bot's max for an auction
 // (or today's bid), the asking price for a Buy It Now, shipping included.
-const mapPay = (p, mode) => (p.is_auction ? (mode === 'now' || p.max == null ? Number(p.bid_now ?? p.price) : Number(p.max)) : Number(p.price)) + (p.combined_ship ? 0 : Number(p.shipping ?? 5));
+const mapPay = (p, mode) => (p.is_auction ? (mode === 'now' || p.max == null ? Number(p.bid_now ?? p.price) : Number(p.max)) : Number(p.price)) + (p.combined_ship ? Number(p.combined_add_ship ?? 0) : Number(p.shipping ?? 5));
 // A chart's drawing width: the card's own, so its text is drawn 1:1 (the next redraw follows a resize).
 const cardWidth = c => Math.max(300, Math.min(1200, (c.card.offsetWidth || c.card.clientWidth || 628))) - 28;
 // One series over dates: pts = [{d: 'YYYY-MM-DD', y, bar?, tip?}]. `ref` draws a dashed level (the
@@ -2245,7 +2260,7 @@ const PANELS = {
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(g.seller)} · ${money(g.total)}</b><span style="flex:none">${g.snipes ? pill('🎯 ' + g.snipes + ' sniping', '#6a1b9a') + ' ' : ''}${pill(esc(g.advice.split(':')[0].split(',')[0]), adviceColor(g.advice))}</span></div>
       ${(g.ids || []).some(i => c.art.get(String(i))) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px">${g.ids.map(i => c.art.get(String(i))).filter(Boolean).map(x => cardPic(x, 40, 56)).join('')}</div>` : ''}
       <div class="muted" style="font-size:12px;line-height:1.35;margin-top:2px">${g.cards.map(esc).join('<br>')}${g.count > g.cards.length ? `<br>+ ${g.count - g.cards.length} more` : ''}</div>
-      <div class="muted" style="font-size:11px;margin-top:2px">${esc(g.advice)}</div></div>`).join('') +
+      <div class="muted" style="font-size:11px;margin-top:2px">${esc(g.advice)}</div>${payByLine(g)}</div>`).join('') +
       `<div style="margin-top:8px">${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>`;
   }],
 
@@ -3743,7 +3758,7 @@ class SnipeHuntStrategy {
           entities: [['switch', 'alerts_enabled'], ['switch', 'alert_fire'], ['switch', 'alert_green'], ['switch', 'alert_cheap_yellow'],
             ['number', 'yellow_max_total'], ['number', 'alert_min_stars'], ['number', 'price_lookups'], ['switch', 'quiet_hours'], ['time', 'quiet_start'], ['time', 'quiet_end'], ['switch', 'bedtime_bundle'],
             ['number', 'urgent_hours'], ['number', 'need_snipe_hours'], ['number', 'monthly_budget'], ['switch', 'gixen_enabled'],
-            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches'], ['text', 'combined_ship_sellers'], ['switch', 'self_tuning']]
+            ['number', 'gixen_relogin_minutes'], ['text', 'sellers'], ['text', 'extra_searches'], ['switch', 'self_tuning']]
             .map(([domain, key]) => id(domain, key))
             // A setting the bot doesn't expose is unavailable; leave it off the list.
             .filter(e => e && hass.states && hass.states[e] && hass.states[e].state !== 'unavailable')
