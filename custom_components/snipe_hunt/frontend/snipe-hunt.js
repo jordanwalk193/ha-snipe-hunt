@@ -2362,6 +2362,8 @@ const PANELS = {
     const wk = d => d.toLocaleDateString('en-US', {weekday: 'short', ...ET});
     const FLAG = {steal: ['🔥 steal', '#d84315', 'Pays half its value or less'], pick: ['⭐ pick', '#1e88e5', "Already one of the bot's picks"],
       sniping: ['🎯 sniping', '#6a1b9a', 'Already in your Gixen snipes'], wanted: ['💛 wanted', '#f9a825', 'On your must-have, rainbow or case-hit list']};
+    // the snapshot can be minutes old: an auction that has ended since leaves the shelf
+    const live = items => (items || []).filter(p => p.kind !== 'auction' || !p.end_time || msLeft(p.end_time) > 0);
     const row = p => {
       const ends = p.kind === 'auction' && p.end_time
         ? `<span style="color:${msLeft(p.end_time) < 3600000 ? '#e53935' : 'inherit'}">⏱ ends in ${left(p.end_time)}</span>${p.bids == null ? '' : ' · ' + p.bids + ' bid' + (p.bids === 1 ? '' : 's')}`
@@ -2387,7 +2389,7 @@ const PANELS = {
       return `<div style="padding-top:10px">
         <div style="font-size:15px;font-weight:600;line-height:1.3">🧾 ${head}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">You owe them for ${s.cards} card${s.cards === 1 ? '' : 's'}${hrs ? ' · ' + hrs : ''}. Each extra card ships for $${cents(s.add_ship)}, not full shipping.</div>
-        ${s.items.length ? s.items.map(row).join('') : empty('Nothing else of theirs is worth adding right now.')}
+        ${live(s.items).length ? live(s.items).map(row).join('') : empty('Nothing else of theirs is worth adding right now.')}
       </div>`;
     }).join('') + `<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">Pays is the price now plus the invoice's extra-card shipping. Worth comes from recorded sales of the same card. Auctions must end before the window closes; Buy It Nows can join the invoice now.</div>`;
   }],
