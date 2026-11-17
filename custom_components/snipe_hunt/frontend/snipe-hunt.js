@@ -1512,6 +1512,34 @@ const PANELS = {
       strip(all.slice(0, n).map(tile), all.length > n ? `<div class="row">${navBtn(`${all.length - n} more on Steals`, 'steals')}</div>` : '') + foldNote(c, buyNowSteals);
   }],
 
+  big_cards: ['Big cards, small prices', true, c => {
+    // High-end cards at prices a frugal buyer pays: worth $50+ by real sales only, paying
+    // half that or less now, within budget (a 🦄 unicorn may go higher). The bot's
+    // src/bigcards.py, sweep.toml [big]. Display only: no alerts, scoring unchanged.
+    const rows = c.d.big_cards;
+    if (!rows) return empty('Update the bot to see this: it needs a version that sends big_cards.');
+    if (!rows.length) return empty('No big cards at small prices right now.');
+    const day = iso => iso ? new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) : '?';
+    const row = p => {
+      const auction = p.kind === 'auction';
+      const ends = auction && p.end_time ? `<span style="color:${msLeft(p.end_time) < 3600000 ? '#e53935' : 'inherit'}">⏱ ends in ${left(p.end_time)}</span> · ${p.bids == null ? '? bids' : p.bids + ' bid' + (p.bids === 1 ? '' : 's')}` : 'Buy It Now';
+      const pic = p.image
+        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none"${p.image_from === 'sale' ? ' title="Photo of a sold copy of this card"' : ''}><img src="${esc(p.image)}" loading="lazy" alt="" style="width:58px;height:80px;object-fit:cover;border-radius:6px;display:block"></a>`
+        : `<div style="width:58px;height:80px;border-radius:6px;background:#8882;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px">🃏</div>`;
+      return `<div class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0">
+        ${pic}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere" title="${esc(p.title)}">${p.unicorn ? tpill('🦄 ' + esc(p.unicorn_why || 'unicorn'), '#8e24aa', 'Unicorn: rare enough, or cheap enough, to stretch the budget') + ' ' : ''}${esc(p.card)}</div>
+          <div style="font-size:13px;margin-top:3px">pays <b>${money(p.pays)}</b> now · worth ~<b>${money(p.value)}</b> <span class="muted">(${p.n} sale${p.n === 1 ? '' : 's'}, last ${day(p.newest)})</span> · <b style="color:${p.share_pct <= 30 ? '#2e7d32' : 'inherit'}">${p.share_pct}%</b> of value</div>
+          <div class="muted" style="font-size:12px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center"><span>${ends}</span>${p.seller ? `<span>${esc(p.seller)}</span>` : ''}<span style="margin-left:auto">${linkBtn('eBay ↗', p.url)}</span></div>
+        </div></div>`;
+    };
+    const uni = rows.filter(p => p.unicorn).length;
+    return `<div class="muted strip-cap">${rows.length} high-end card${rows.length === 1 ? '' : 's'} at half their value or less${uni ? ` · ${uni} 🦄` : ''}. Unicorns first, then the cheapest share.</div>` +
+      rows.map(row).join('') +
+      `<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">Values come from recorded sales of the same card only, never a guess. Pays now is the current bid or price plus shipping. Look over the photos and the seller before you buy; nothing here alerts.</div>`;
+  }],
+
   ending: ['Ending soonest', true, c => {
     // Picked auctions, the soonest ending first (or the best deal at max first).
     const order = store('ending_order', 'soon');
@@ -3761,6 +3789,7 @@ class SnipeHuntStrategy {
         {...section(panel('tape')), column_span: 3},
         {...section(heading('The board', 'mdi:clock-fast'), panel('board')), column_span: 3},
         {...section(heading('Buy now, think later', 'mdi:lightning-bolt'), panel('buy_now')), column_span: 3},
+        {...section(heading('Big cards, small prices', 'mdi:diamond-stone'), panel('big_cards')), column_span: 3},
         {...section(heading('Ending soonest', 'mdi:timer-sand'), panel('ending')), column_span: 3},
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         {...section(heading('To do', 'mdi:checkbox-marked-circle-outline', id('sensor', 'need_snipe')), panel('todo')), column_span: 2},
