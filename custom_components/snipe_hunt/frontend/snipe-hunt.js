@@ -1742,6 +1742,66 @@ const PANELS = {
       `<div class="muted" style="font-size:12px;text-align:center;margin-top:6px">Safe to share: card names, prices and percentages only. No sellers or item numbers.</div>`;
   }],
 
+  releases: ['New releases', false, c => {
+    // Per new product: the usual week-by-week fade of its singles (releases.toml research)
+    // pooled with the bot's own weekly sales, and a countdown to when they usually bottom.
+    // For buying cheap: when to wait and when to pounce.
+    const rs = c.d.releases;
+    if (!rs) return empty('Update the bot to see this: it needs a version with releases.toml.');
+    if (!rs.length) return empty('No product out in the last 30 weeks or coming in the next month.');
+    const KIND = {falling: ['Wait', '#ef6c00'], settled: ['Buy now', '#2e7d32'], rising: ['Buy now · rising', '#c62828'], coming: ['Coming', '#607d8b']};
+    const day = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
+    const chart = r => {
+      const pts = r.curve || [];
+      if (!pts.length) return '';
+      const W = 320, H = 120, L = 26, R = 6, T = 8, B = 18, last = pts.length;
+      const vals = pts.flatMap(p => [p[2], p[3]].concat(p[4] == null ? [] : [p[4]]));
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      lo = Math.floor((lo - 4) / 10) * 10; hi = Math.ceil((hi + 4) / 10) * 10;
+      const x = w => L + (w - 1) * (W - L - R) / (last - 1), y = v => T + (hi - v) * (H - T - B) / (hi - lo);
+      const band = pts.map(p => `${x(p[0]).toFixed(1)},${y(p[3]).toFixed(1)}`).join(' ') + ' ' +
+        pts.slice().reverse().map(p => `${x(p[0]).toFixed(1)},${y(p[2]).toFixed(1)}`).join(' ');
+      const line = pts.map(p => `${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join(' ');
+      const dots = pts.filter(p => p[4] != null).map(p =>
+        `<circle cx="${x(p[0]).toFixed(1)}" cy="${y(p[4]).toFixed(1)}" r="${Math.min(7, 1.6 + Math.sqrt(p[5])).toFixed(1)}" fill="#1e88e5" fill-opacity=".55" stroke="#1565c0" stroke-width=".6"><title>Week ${p[0]}: ${p[4]} from ${p[5]} sale${p[5] === 1 ? '' : 's'}</title></circle>`).join('');
+      const grid = [lo, Math.round((lo + hi) / 20) * 10, hi].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="currentColor" stroke-opacity=".12"/><text x="${L - 3}" y="${y(v) + 3}" text-anchor="end" font-size="8" fill="currentColor" fill-opacity=".6">${v}</text>`).join('');
+      const sx = x(Math.min(r.settle_week, last));
+      const settle = `<line x1="${sx}" x2="${sx}" y1="${T}" y2="${H - B}" stroke="#2e7d32" stroke-width="1.2" stroke-dasharray="3 2"/><text x="${sx + 2}" y="${T + 7}" font-size="8" fill="#2e7d32">usual low</text>`;
+      const now = r.kind !== 'coming' && r.week <= last ? (() => { const tx = x(r.week); return `<line x1="${tx}" x2="${tx}" y1="${T}" y2="${H - B}" stroke="currentColor" stroke-width="1.4"/><text x="${tx + 2}" y="${H - B - 3}" font-size="8" fill="currentColor">today</text>`; })() : '';
+      const ticks = [1, 4, 8, 12, 16, 20, 26, 30].filter(w => w <= last).map(w => `<text x="${x(w)}" y="${H - 5}" text-anchor="middle" font-size="8" fill="currentColor" fill-opacity=".6">${w}</text>`).join('');
+      return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin:6px 0 0;color:var(--primary-text-color)" role="img" aria-label="Price curve">
+        ${grid}<polygon points="${band}" fill="#fb8c00" fill-opacity=".14"/><polyline points="${line}" fill="none" stroke="#ef6c00" stroke-width="2" stroke-linejoin="round"/>
+        ${settle}${now}${dots}${ticks}</svg>
+        <div class="muted" style="font-size:11px;display:flex;justify-content:space-between;gap:8px"><span>weeks since release · 100 = release week</span><span><span style="color:#ef6c00">━</span> blend <span style="color:#1e88e5">●</span> your sales</span></div>`;
+    };
+    const count = r => r.kind === 'coming' ? `Skip early copies: the first weeks are the priciest.`
+      : r.kind === 'falling' ? `<b>${r.weeks_left} week${r.weeks_left === 1 ? '' : 's'}</b> to the usual low (${day(r.settle_date)}). Early copies run high: wait unless it's a steal.`
+      : r.kind === 'rising' ? `Cheapest window was around ${day(r.settle_date)}; prices are climbing again. Buy fair listings now, don't wait.`
+      : `At the low since about ${day(r.settle_date)}. Good time to fill the gaps below.`;
+    // the player's name says nothing here: show the set, number and parallel
+    const short = t => String(t || '').replace(/jordan walker/ig, ' ').replace(/^[\s\-–~|,]+|[\s\-–~|,]+$/g, '').replace(/\s{2,}/g, ' ') || t;
+    const card = r => {
+      const [label, col] = KIND[r.kind] || KIND.settled;
+      const share = Math.round((r.data_share || 0) * 100);
+      const cards = (r.cards || []).length ? cap(r.kind === 'coming' ? 'ALREADY SELLING · YOU DON\'T HAVE' : 'YOU DON\'T HAVE · CHEAPEST FIRST') + r.cards.map(x =>
+        `<div class="line" style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.title)}">${esc(short(x.title))}</span>
+          <span style="flex:none;text-align:right"><b>${money(x.value)}</b> <span class="muted" style="font-size:11px">${x.n} sold</span></span>
+          ${linkBtn('eBay', 'https://www.ebay.com/sch/i.html?_sacat=261328&_sop=15&_nkw=' + encodeURIComponent(x.search))}</div>`).join('') : '';
+      return `<div class="bundle">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+          <b style="font-size:15px">${esc(r.name)}</b>${pill(label, col)}</div>
+        <div class="muted" style="font-size:12px">${r.kind === 'coming' ? 'Release ' + day(r.released) : `Week ${r.week} since ${day(r.released)}`}${r.approx ? ' <span title="Release date is approximate">(date approx.)</span>' : ''} · research confidence ${esc(r.confidence)}</div>
+        <div style="font-size:14px;margin-top:4px">${esc(r.text)}</div>
+        <div style="font-size:13px;margin-top:2px">${count(r)}</div>
+        ${chart(r)}
+        <div class="muted" style="font-size:12px;margin-top:2px">${r.n ? `${share}% from your own sales (${r.n} sale${r.n === 1 ? '' : 's'}), the rest from research.` : 'All research so far: no sales of its raw cards yet.'}</div>
+        ${cards}</div>`;
+    };
+    return `<div style="padding-top:8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr));gap:0 10px;align-items:start">` + rs.map(card).join('') + `</div>` +
+      `<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">Raw, unsigned cards only. Each sale is compared with the same card's other sales, so a week of pricey parallels doesn't look like a rally. The research curve counts for a few sales; the more the bot sees, the more the line follows them. Form and news beat the calendar.</div>`;
+  }],
+
   trophies: ['Trophy Case', false, c => {
     // Achievements from the real collection and the hunt (the bot's src/trophies.py).
     // Bronze, silver, gold; a tier once earned stays earned.
@@ -3720,6 +3780,9 @@ class SnipeHuntStrategy {
         section(heading('Card year', 'mdi:calendar-month-outline'), panel('season'),
           heading('Case hits & priority cards', 'mdi:target-variant'), panel('priority')),
       ]},
+      releases: {title: 'New releases', path: 'releases', icon: 'mdi:new-box', sections: [
+        {...section(heading('New releases', 'mdi:new-box'), panel('releases')), column_span: 3},
+      ]},
       collection: {title: 'Collection', path: 'collection', icon: 'mdi:cards', sections: [
         section(heading('Collection', 'mdi:cards', id('sensor', 'collection')), panel('collection'),
           budget ? {type: 'tile', entity: budget, name: 'Monthly budget', features: [{type: 'numeric-input', style: 'buttons'}], features_position: 'bottom', grid_options: {columns: 'full'}} : null,
@@ -3774,6 +3837,7 @@ class SnipeHuntStrategy {
     // Learn came after the tabs option: it shows even when saved tabs predate it.
     if (!upgraded.includes('learn')) upgraded.push('learn');
     if (!upgraded.includes('catalog')) upgraded.push('catalog');
+    if (!upgraded.includes('releases')) upgraded.splice(upgraded.includes('learn') ? upgraded.indexOf('learn') + 1 : upgraded.length, 0, 'releases');
     if (!upgraded.includes('binder')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'binder');
     if (!upgraded.includes('trophies')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'trophies');
     if (!upgraded.includes('pages')) upgraded.splice(upgraded.includes('binder') ? upgraded.indexOf('binder') + 1 : upgraded.length, 0, 'pages');
