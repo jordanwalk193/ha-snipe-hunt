@@ -2352,6 +2352,46 @@ const PANELS = {
       `<div style="margin-top:8px">${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>`;
   }],
 
+  owe_shelf: ['While you owe them', false, c => {
+    // An open invoice with combined shipping: that seller's other live cards ship for the
+    // extra-card rate until the window closes, the cheapest moment to buy more from them.
+    // The bot's src/owe.py (snapshot key owe_shelf). No open window: the card hides itself.
+    const shelves = (c.d.owe_shelf || []).filter(s => !s.closes_at || msLeft(s.closes_at) > 0);
+    if (!shelves.length) return '<style>:host{display:none !important}</style>';   // !important beats the page's own styles for the card
+    const ET = {timeZone: 'America/New_York'};   // the window closes at midnight Eastern (config.TZ)
+    const wk = d => d.toLocaleDateString('en-US', {weekday: 'short', ...ET});
+    const FLAG = {steal: ['🔥 steal', '#d84315', 'Pays half its value or less'], pick: ['⭐ pick', '#1e88e5', "Already one of the bot's picks"],
+      sniping: ['🎯 sniping', '#6a1b9a', 'Already in your Gixen snipes'], wanted: ['💛 wanted', '#f9a825', 'On your must-have, rainbow or case-hit list']};
+    const row = p => {
+      const ends = p.kind === 'auction' && p.end_time
+        ? `<span style="color:${msLeft(p.end_time) < 3600000 ? '#e53935' : 'inherit'}">⏱ ends in ${left(p.end_time)}</span>${p.bids == null ? '' : ' · ' + p.bids + ' bid' + (p.bids === 1 ? '' : 's')}`
+        : 'Buy It Now';
+      const pic = p.image
+        ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="flex:none"><img src="${esc(p.image)}" loading="lazy" alt="" style="width:46px;height:64px;object-fit:cover;border-radius:6px;display:block"></a>`
+        : `<div style="width:46px;height:64px;border-radius:6px;background:#8882;flex:none;display:flex;align-items:center;justify-content:center;font-size:20px">🃏</div>`;
+      const worth = p.value != null
+        ? ` · worth ~<b>${money(p.value)}</b> <span class="muted">(${p.sales} sale${p.sales === 1 ? '' : 's'})</span> · <b style="color:${p.deal_pct >= 50 ? '#2e7d32' : (p.deal_pct < 0 ? '#e53935' : 'inherit')}">${p.deal_pct >= 0 ? p.deal_pct + '% off' : -p.deal_pct + '% over'}</b>`
+        : ` · <span class="muted">${esc(p.note || 'no sales on record yet')}</span>`;
+      const flags = (p.flags || []).filter(f => FLAG[f]).map(f => tpill(FLAG[f][0], FLAG[f][1], f === 'wanted' && p.want ? 'On your ' + p.want + ' list' : FLAG[f][2])).join(' ');
+      return `<div class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0">${pic}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere" title="${esc(p.card)}">${flags ? flags + ' ' : ''}${esc(p.card)}</div>
+          <div style="font-size:13px;margin-top:3px">pays <b>${money(p.pays)}</b> <span class="muted">(+$${cents(p.add_ship)} ship)</span>${worth}</div>
+          <div class="muted" style="font-size:12px;margin-top:2px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center"><span>${ends}</span><span style="margin-left:auto">${linkBtn('eBay ↗', p.url)}</span></div>
+        </div></div>`;
+    };
+    return shelves.map(s => {
+      const by = s.closes_at ? new Date(new Date(s.closes_at) - 60000) : null;   // the window's last minute
+      const head = `While you owe ${esc(s.seller)} · +$${cents(s.add_ship)} each${by ? ` · add by ${wk(by)} ${by.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit', ...ET})}` : ''}${s.pay_by ? ` · pay by ${esc(payDay(s.pay_by).split(',')[0])}` : ''}`;
+      const hrs = s.hours_left == null ? '' : (s.hours_left < 24 ? `${Math.max(1, Math.round(s.hours_left))} h` : `${Math.round(s.hours_left / 2.4) / 10} days`) + ' left to add more';
+      return `<div style="padding-top:10px">
+        <div style="font-size:15px;font-weight:600;line-height:1.3">🧾 ${head}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">You owe them for ${s.cards} card${s.cards === 1 ? '' : 's'}${hrs ? ' · ' + hrs : ''}. Each extra card ships for $${cents(s.add_ship)}, not full shipping.</div>
+        ${s.items.length ? s.items.map(row).join('') : empty('Nothing else of theirs is worth adding right now.')}
+      </div>`;
+    }).join('') + `<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.5">Pays is the price now plus the invoice's extra-card shipping. Worth comes from recorded sales of the same card. Auctions must end before the window closes; Buy It Nows can join the invoice now.</div>`;
+  }],
+
   all_picks: ['Every live pick', true, c => {
     const tier = store('tier', 'all'), kind = store('kind', 'all'), cover = store('cover', 'all'), sort = store('sort', 'best'), limit = store('limit', 'page');
     let picks = (cover === 'sniped' ? c.allPicks : c.unfolded).slice();   // every pick, close to market too
@@ -3794,7 +3834,7 @@ class SnipeHuntStrategy {
         section(heading('Right now', 'mdi:flash'), panel('summary'), heading('Top pick', 'mdi:star-circle'), panel('top_pick')),
         {...section(heading('To do', 'mdi:checkbox-marked-circle-outline', id('sensor', 'need_snipe')), panel('todo')), column_span: 2},
         section(...(gixen ? [heading('Your snipes ending today', 'mdi:target', id('sensor', 'gixen_snipes')), panel('snipes_today')] : []),
-          heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay')),
+          heading('To pay', 'mdi:credit-card-outline', id('sensor', 'to_pay')), panel('pay'), panel('owe_shelf')),
       ]},
       steals: {title: 'Steals', path: 'steals', icon: 'mdi:cards-playing-outline', sections: [
         {...section(heading('Steals', 'mdi:cards-playing-outline', id('sensor', 'live_picks')), panel('steals')), column_span: 3},
