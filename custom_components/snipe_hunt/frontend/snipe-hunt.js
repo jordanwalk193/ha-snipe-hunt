@@ -1777,6 +1777,7 @@ const PANELS = {
     const rs = c.d.releases;
     if (!rs) return empty('Update the bot to see this: it needs a version with releases.toml.');
     if (!rs.length) return empty('No product out in the last 30 weeks or coming in the next month.');
+    const REL_TAG = {Base: '#78909c', Parallel: '#1e88e5', Numbered: '#8e24aa', Insert: '#00897b', Variation: '#ef6c00', 'Other card': '#607d8b', '1 of 1': '#c9a227'};
     const KIND = {falling: ['Wait', '#ef6c00'], settled: ['Buy now', '#2e7d32'], rising: ['Buy now · rising', '#c62828'], coming: ['Coming', '#607d8b']};
     const day = iso => new Date(iso + 'T12:00:00').toLocaleDateString(undefined, {month: 'short', day: 'numeric'});
     const chart = r => {
@@ -1811,10 +1812,14 @@ const PANELS = {
     const card = r => {
       const [label, col] = KIND[r.kind] || KIND.settled;
       const share = Math.round((r.data_share || 0) * 100);
+      // each card: a short name (number + what sets it apart), its kind, and one line on how it
+      // differs from the base card (the bot's releases.describe); older bots send the eBay title only
       const cards = (r.cards || []).length ? cap(r.kind === 'coming' ? 'ALREADY SELLING · YOU DON\'T HAVE' : 'YOU DON\'T HAVE · CHEAPEST FIRST') + r.cards.map(x =>
-        `<div class="line" style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:13px">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(x.title)}">${esc(short(x.title))}</span>
-          <span style="flex:none;text-align:right"><b>${money(x.value)}</b> <span class="muted" style="font-size:11px">${x.n} sold</span></span>
+        `<div class="line" style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;font-size:13px">
+          <div style="flex:1;min-width:0;overflow-wrap:anywhere" title="${esc(x.title)}">
+            <div><b>${esc(x.label || short(x.title))}</b>${x.tag ? ' ' + pill(esc(x.tag), REL_TAG[x.tag] || '#607d8b') : ''}</div>
+            ${x.what ? `<div class="muted" style="font-size:12px;line-height:1.35;margin-top:1px">${esc(x.what)}</div>` : ''}</div>
+          <div style="flex:none;text-align:right;white-space:nowrap"><b>${money(x.value)}</b><div class="muted" style="font-size:11px">${x.n} sold</div></div>
           ${linkBtn('eBay', 'https://www.ebay.com/sch/i.html?_sacat=261328&_sop=15&_nkw=' + encodeURIComponent(x.search))}</div>`).join('') : '';
       return `<div class="bundle">
         <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
