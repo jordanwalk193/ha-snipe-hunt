@@ -89,6 +89,15 @@ const remember = (key, value) => {
 const arg = o => esc(JSON.stringify(o));
 
 const cap = text => `<div class="cap">${text}</div>`;
+// the bot's working notes ("(#485 per title)") aren't part of a card's name
+const noNotes = t => String(t || '').replace(/\s*\([^)]*\bper (title|listing|seller)\)/ig, '');
+// a note cut short by an older bot ends at its last full sentence, never mid-word
+const whole = t => {
+  t = String(t || '').trim();
+  if (!t || /[.!?)…%]$/.test(t)) return t;
+  const i = Math.max(t.lastIndexOf('. '), t.lastIndexOf('! '), t.lastIndexOf('? '));
+  return i > t.length / 3 ? t.slice(0, i + 1) : t.replace(/\s+\S*$/, '') + '…';
+};
 const pill = (text, color) => `<span class="pill" style="background:${color}">${text}</span>`;
 const tpill = (text, color, title) => `<span class="pill" style="background:${color}" title="${esc(title)}">${text}</span>`;
 const empty = text => `<div class="muted empty">${text}</div>`;
@@ -287,7 +296,7 @@ const pocket = (x, n = 0, rank = null) => {
 };
 const pickButtons = p => `<div class="row tight">
   ${p.is_auction
-    ? (p.snipe == null && !p.marked ? snipeBtn(p.item_id, p.max) : copyBtn('Copy item #', p.item_id)) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + (p.win == null ? '' : copyBtn('Copy win ' + cents(p.win), cents(p.win))) + markBtn(p) + binBtn(p)
+    ? (p.snipe == null && !p.marked ? snipeBtn(p.item_id, p.max) : copyBtn('Copy item #', p.item_id)) + (p.max == null ? '' : copyBtn('Copy max ' + cents(p.max), cents(p.max))) + markBtn(p) + binBtn(p)
     : linkBtn(p.best_offer ? 'Make offer ↗' : 'Buy ↗', p.url, '#1e88e5')}
   ${act('Skip', {action: 'skip', item_id: p.item_id}, {hide: true})}
   ${p.feedback === 'good_pick' ? pill('👍 Good call noted', '#43a047') : act('👍 Good call', {action: 'feedback', item_id: p.item_id, reason: 'good_pick'}, {busy: 'Saving…'})}
@@ -307,7 +316,7 @@ const feedbackForm = p => `<div class="fb" style="margin-top:8px;padding:8px;bor
 </div>`;
 // The second number next to the max: a bid at about the going rate, for a card
 // you would rather win than steal. Only the bot's newer versions send it.
-const winTxt = p => p.win == null ? '' : ` · <span title="About the going rate less shipping: a fair buy, not a steal">to win ≈ <b>${cents(p.win)}</b></span>`;
+const winTxt = p => p.win == null ? '' : ` · <span title="Where auctions like this usually end: a fair buy, not a steal. Your max stays the frugal bid.">likely closes ≈ <b>${cents(p.win)}</b></span>`;
 // What makes the card worth knowing (the bot's "story": set, parallel, print run, a
 // rookie year, an oddball release), one line a collector would tell a friend.
 const story = p => p.story ? `<div class="story">💡 ${esc(p.story)}</div>` : '';
@@ -853,7 +862,7 @@ const pickLine = (p, lead, extra) => {
       <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${invoicePill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
-      <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(p.why)}</div>
+      <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(whole(p.why))}</div>
       ${story(p)}${lastSold(p)}${slabTxt(p)}
       <div class="muted" style="font-size:11px;margin-top:2px">${sellerTxt(p)}${ends} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
       ${pickButtons(p)}
@@ -872,7 +881,7 @@ const snipeCheck = s => {
     text = `goes for about <b style="color:var(--primary-text-color)">${money(k.value)}</b> delivered <span class="muted">(${BASIS[k.basis] || 'an estimate'})</span>`;
     if (k.verdict === 'over') text += ` · your snipe would pay ${-k.pct}% more`;
     else if (k.verdict !== 'outbid') text += ` · yours is ${k.pct}% under`;
-    if ((k.verdict === 'long_shot' || k.verdict === 'steal') && k.win != null) text += ` · to win ≈ <b style="color:var(--primary-text-color)">${cents(k.win)}</b>`;
+    if ((k.verdict === 'long_shot' || k.verdict === 'steal') && k.win != null) text += ` · likely closes ≈ <b style="color:var(--primary-text-color)">${cents(k.win)}</b>`;
     if (k.verdict === 'outbid') text += k.room ? ' · still under that at today\'s bid' : ' · no bargain left at today\'s bid';
   } else text = 'the bot will price this card at its next hourly run';
   return `<div style="font-size:12px;margin-top:3px"><span class="pill" style="background:${color}">${label}</span> ${text}</div>` +
@@ -1605,7 +1614,7 @@ const PANELS = {
         ${p.max == null ? '' : `<div style="margin-top:6px;font-size:15px"><b>Max ${cents(p.max)}</b> <span class="muted">(${p.max_basis === 'sales' ? 'sales' : 'guess, no sales found'})${gap > 0 ? ' · ' + money(gap) + ' of room' : ''}</span>${winTxt(p)}</div>`}
         ${lastSold(p)}
         ${p.deal ? `<div style="font-size:13px;margin-top:4px">${deal(p)}</div>` : ''}
-        <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(p.why)}</div>
+        <div class="muted" style="font-size:13px;margin-top:6px;line-height:1.3">${esc(whole(p.why))}</div>
         ${story(p)}
         <div class="muted" style="font-size:12px;margin-top:4px">${sellerTxt(p)}${p.is_auction && p.end_time ? ' · ends ' + when(p.end_time) : ''} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(p.item_id)}</b></div>
         ${pickButtons(p)}
@@ -1641,7 +1650,7 @@ const PANELS = {
     if (!s.all || !s.all.n) return empty('No bought picks on record yet.');
     const box = (label, t) => stat(label, worth(t.saved), '#2e7d32', '💰');
     return `<div style="padding-top:10px">` + grid(2, [box('SAVED THIS MONTH', s.month || {saved: 0}), box('SAVED IN ALL', s.all)]) +
-      `<div class="muted" style="font-size:12px;margin-top:8px">${s.all.n} bought picks: paid ${money(s.all.paid)} for ${money(s.all.value)} of cards, ${s.all.pct}% of value. Value is the bot's going rate when it picked the card; paid is the price before shipping.</div>` +
+      `<div class="muted" style="font-size:12px;margin-top:8px">${s.all.n} bought picks: paid ${money(s.all.paid)} for ${money(s.all.value)} of cards, ${s.all.pct}% of value. Only the bot's picks count here (What the collection is worth counts every card). Value is the bot's going rate when it picked the card; paid is the price before shipping.</div>` +
       (s.best ? `<div class="line" style="display:flex;gap:12px;align-items:center;padding:10px 0;margin-top:6px">${s.best.image ? `<img src="${esc(s.best.image)}" style="height:74px;border-radius:6px">` : ''}<div><div class="muted" style="font-size:11px;letter-spacing:2px">🏆 BEST STEAL</div><b>${esc(s.best.card)}</b><div style="font-size:13px">${money(s.best.paid)} for a ${worth(s.best.value)} card · ${s.best.pct}% of value${s.best.date ? ' · ' + esc(s.best.date) : ''}</div></div></div>` : '') + `</div>`;
   }],
 
@@ -1892,9 +1901,9 @@ const PANELS = {
       (b.top || []).map((t, i) => `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0">` +
         `<div class="rank" style="${i === 0 ? 'background:' + c.accent + ';color:#fff' : ''}">${i + 1}</div>` +
         (t.image ? `<img src="${esc(t.image)}" style="height:44px;border-radius:4px">` : '') +
-        `<div style="flex:1;min-width:0"><b>${esc(t.card)}</b><div class="muted" style="font-size:12px">${money(t.paid)} for a ${worth(t.value)} card · <b style="color:var(--primary-text-color)">${t.off_pct}% off</b></div></div></div>`).join('') +
+        `<div style="flex:1;min-width:0"><b>${esc(noNotes(t.card))}</b><div class="muted" style="font-size:12px">${money(t.paid)} for a ${worth(t.value)} card · <b style="color:var(--primary-text-color)">${t.off_pct}% off</b></div></div></div>`).join('') +
       cap('BRAG CARD · SAFE TO SHARE (NO SELLERS OR ITEM NUMBERS)') +
-      `<pre class="brag">${esc(b.card)}</pre></div>`;
+      `<pre class="brag">${esc(noNotes(b.card))}</pre></div>`;
   }],
 
   ending_list: ['Ending soon', true, c => {
@@ -2099,7 +2108,7 @@ const PANELS = {
         <summary style="cursor:pointer;display:flex;gap:10px;align-items:center">
           ${x.img ? `<img src="${esc(x.img)}" loading="lazy" style="width:38px;height:52px;object-fit:cover;border-radius:4px;flex:none">` : '<div style="width:38px;height:52px;border-radius:4px;background:#8882;flex:none"></div>'}
           <span style="flex:1;min-width:0"><b>${esc(x.y)} ${esc(x.f)}${x.no ? ' #' + esc(x.no) : ''}</b>
-            <span class="muted" style="display:block;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.t)}</span>
+            <span class="muted" style="display:block;font-size:12px;overflow-wrap:anywhere">${esc(x.t)}</span>
             <span style="font-size:12px">${x.p.length} version${x.p.length === 1 ? '' : 's'} · ${have ? `<b style="color:#43a047">${have} owned</b>` : 'none owned'}${meds.length ? ' · ' + money(Math.min(...meds)) + (meds.length > 1 ? '–' + money(Math.max(...meds)) : '') : ''}${lives.length ? ' · 🛒 from ' + money(Math.min(...lives)) : ''}</span></span>
         </summary><div style="padding:4px 0 2px 48px">${x.p.map(p => pRow(x, p)).join('')}</div></details>`;
     }).join('') + (cards.length > limit ? empty(`${cards.length - limit} more: narrow it with a product or year.`) : '');
@@ -2459,8 +2468,9 @@ const PANELS = {
       stat('WORTH', '$' + Math.round(w.value).toLocaleString(), '#1e88e5', '💎'),
       stat('PAID', '$' + Math.round(w.paid).toLocaleString(), '#546e7a', '💳'),
       stat(w.gain >= 0 ? 'UP' : 'DOWN', (w.gain >= 0 ? '+$' : '-$') + Math.abs(Math.round(w.gain)).toLocaleString(), gainColor, w.gain >= 0 ? '📈' : '📉')]) + `</div>` +
-      `<div class=muted style="font-size:12px;margin-top:8px">${w.valued} of ${w.n} cards priced by the ledger's newest sale of the same card; the rest at what you paid.</div>` +
-      (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + w.movers.map(m => `<div class=line style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${ownThumb(c, m.id)}<span style="min-width:0"><b>${esc(m.card)}</b> <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></span></div>`).join('') : '') +
+      `<div class=muted style="font-size:12px;margin-top:8px">${w.valued} of ${w.n} cards priced by the ledger's newest sale of the same card; the rest at what you paid.
+        Other totals count fewer cards, so they differ: Hall of Fame and the Binder count only cards with sales on record, Savings and the Brag board only the bot's picks.</div>` +
+      (w.movers.length ? cap('MOVERS SINCE ' + (w.since || 'LAST WEEK')) + Object.values(w.movers.reduce((o, m) => { const k = m.card + '|' + m.was + '|' + m.value; (o[k] = o[k] || {...m, copies: 0}).copies++; return o; }, {})).map(m => `<div class=line style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${ownThumb(c, m.id)}<span style="min-width:0"><b>${esc(m.card)}</b>${m.copies > 1 ? ` <span class=muted>×${m.copies}</span>` : ''} <span class=muted>· ${money(m.was)} → ${money(m.value)}</span> <b style="color:${m.pct > 0 ? '#2e7d32' : '#c62828'}">${m.pct > 0 ? '+' : ''}${m.pct}%</b></span></div>`).join('') : '') +
       cap('TOP CARDS BY THE LEDGER · GREY = PAID, COLOUR = WORTH') + top.map(x => `<div class=line style="display:flex;gap:10px;align-items:center;padding:7px 0;font-size:13px">${ownThumb(c, x.id, 40, 56)}<div style="flex:1;min-width:0"><b>${esc(x.card)}</b> <span class=muted style="font-size:12px">· ${x.n} sale${x.n === 1 ? '' : 's'}, ${x.at}</span>
         <div class="dual"><div class="dual-bars"><span class="dual-paid" style="width:${Math.round(x.paid / topMax * 100)}%"></span><span class="dual-worth" style="width:${Math.round(x.value / topMax * 100)}%;background:${x.value >= x.paid ? '#2e7d32' : '#c62828'}"></span></div>
         <div class="dual-txt">${money(x.paid)} ▸ <b>${money(x.value)}</b> <b style="color:${x.value >= x.paid ? '#2e7d32' : '#c62828'}">${x.value >= x.paid ? '+' : ''}${Math.round((x.value - x.paid) / (x.paid || 1) * 100)}%</b></div></div></div></div>`).join('');
@@ -2578,7 +2588,7 @@ const PANELS = {
       hbar(esc(b.band), Math.abs(b.value_bias_pct), 50, b.value_bias_pct > 10 ? '#e53935' : b.value_bias_pct < -10 ? '#1e88e5' : '#43a047', `${b.calls} sold · ${Math.abs(b.value_bias_pct)}% ${b.value_bias_pct > 0 ? 'above' : 'below'}`)).join('') : '') +
     `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">
       ${m.count} real auction results on record, ${m.count_7d} from the last 7 days. New picks are priced from these.<br>
-      ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.${m.under_win == null ? '' : ` A snipe at the "to win" bid would have been in the running on ${m.under_win} of the ${m.calls}.`}` : 'None of the picked auctions has sold yet.'}
+      ${m.calls ? `Of ${m.calls} picked auctions that sold, ${m.under_max} closed at or under the bot's max, so a snipe at that max was in the running. The other ${m.over_max} went higher and were left alone.${m.under_win == null ? '' : ` A snipe at the "likely closes" price would have been in the running on ${m.under_win} of the ${m.calls}.`}` : 'None of the picked auctions has sold yet.'}
       ${m.value_gap_pct == null ? '' : `<br>The going rate the bot gave was typically ${m.value_gap_pct}% away from the real delivered price.`}
       ${(m.bands || []).filter(b => b.calls).map(b => `<br>Cards valued ${esc(b.band)}: ${b.calls} sold, final prices ran ${Math.abs(b.value_bias_pct)}% ${b.value_bias_pct > 0 ? 'above' : 'below'} the bot's going rate.`).join('')}
       ${m.missed_steals ? `<br>Missed steals in the last 30 days: ${m.missed_steals} sold well under their usual price with no pick from the bot.` : ''}</div></div>`;
@@ -2945,7 +2955,7 @@ const PANELS = {
       line: [...serious(x).map(d => esc(d.text)), ...(costly(x) ? [`over the going rate (~${money(x.check.value)})`] : [])].join(' · ') + ` · your snipe ${cents(x.max_bid)}`,
       buttons: linkBtn('Gixen ↗', GIXEN_URL, '#6a1b9a')})));
     c.snipes.filter(x => x.outbid && x.check && x.check.room && x.check.win != null && Number(x.check.win) > Number(x.current_bid)).forEach(x => items.push(row('📈 Outbid, still cheap', '#fb8c00', {at: x.end_time, url: x.url, title: x.title || x.item_id,
-      line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · to win ≈ ${cents(x.check.win)}`,
+      line: `bid now ${cents(x.current_bid)}, past your ${cents(x.max_bid)} · goes for ~${money(x.check.value)} · likely closes ≈ ${cents(x.check.win)}`,
       buttons: snipeBtn(x.item_id, x.check.win, '🎯 Re-snipe ↗') + copyBtn('Copy ' + cents(x.check.win), cents(x.check.win))})));
     const payPic = g => { const x = (g.ids || []).map(i => c.art.get(String(i))).find(y => y && y.i); return x ? {url: x.e ? 'https://www.ebay.com/itm/' + x.e : 'https://www.ebay.com/mye/myebay/purchase', image: x.i} : null; };
     (c.d.pipeline.unpaid || []).filter(g => /^pay/i.test(g.advice)).forEach(g => items.push(row('💳 Pay', '#1e88e5', {item: payPic(g), title: g.seller + ' · ' + money(g.total) + ((g.count || 0) > 1 ? ' · ' + g.count + ' cards' : ''),
@@ -3335,7 +3345,7 @@ const STYLE = `
   .bwhen small, .bcard small, .bnum small { display: block; font-size: 10px; color: var(--secondary-text-color); }
   .bnum small { font-size: 8.5px; letter-spacing: 1.5px; font-weight: 700; font-family: inherit; }
   .bcard { min-width: 0; }
-  .bcard .title { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bcard .title { display: block; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
   .bcard small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .bnum { font-size: 13px; font-weight: 600; white-space: nowrap; }
   .bnum b { font-size: 11px; }
@@ -3472,7 +3482,7 @@ async function paintBrag(canvas, d, span) {
     g.fillText(span === 'all' ? 'BEST STEAL EVER' : span === 'month' ? 'STEAL OF THE MONTH' : 'STEAL OF THE WEEK', rx, hy + 40);
     g.fillStyle = '#fff'; g.font = F(800, 42);
     // the bot's working notes ("(#485 per title)") aren't for sharing
-    const nameLines = bragWrap(g, String(best.card || '').replace(/\s*\([^)]*\bper (title|listing|seller)\)/ig, ''), rw, 4);
+    const nameLines = bragWrap(g, noNotes(best.card), rw, 4);
     nameLines.forEach((l, i) => g.fillText(l, rx, hy + 100 + i * 52));
     let y = hy + 100 + nameLines.length * 52 + 40;
     g.font = F(600, 40); g.fillStyle = '#ffffffcc'; g.fillText('Paid', rx, y); g.fillText('Worth', rx, y + 58);
