@@ -277,6 +277,10 @@ const ownThumb = (c, id, w = 36, h = 50) => {
 const cardPic = (x, w = 38, h = 53) => x.i
   ? `<span role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" style="flex:none;cursor:pointer"><img src="${esc(x.i)}" loading="lazy" alt="" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:5px;display:block"></span>`
   : `<div style="width:${w}px;height:${h}px;border-radius:5px;background:#8882;flex:none;display:flex;align-items:center;justify-content:center">🃏</div>`;
+// The collection's tier list (bot: src/tierlist.py): S..F on a curve, the classic tier-maker colours.
+const TIERS = ['S', 'A', 'B', 'C', 'D', 'F'];
+const TIER_COLOR = {S: '#ff7f7f', A: '#ffbf7f', B: '#ffdf7f', C: '#ffff7f', D: '#bfff7f', F: '#7fbfff'};
+const tierChip = x => x.t ? `<span class="tier-chip" style="background:${TIER_COLOR[x.t]}" title="${esc(x.t + ' tier' + (x.tw && x.tw.length ? ': ' + x.tw.join(', ') : ''))}">${x.t}</span>` : '';
 // One sleeve in the binder wall: the card's picture, its hit flags, what you paid and what it's worth now.
 const POCKET_RING = {A: '#00bfa5', L: '#00bfa5', N: '#ab47bc', G: '#78909c', F: '#fbc02d'};
 const pocket = (x, n = 0, rank = null) => {
@@ -289,7 +293,7 @@ const pocket = (x, n = 0, rank = null) => {
       ${where ? `<div class="pk-where" title="${esc(x.s)}">${where}</div>` : ''}
       ${x.if === 'same' ? '<div class="pk-same" title="Photo of another copy of this card">≈</div>' : ''}
       ${gain != null && gain >= 1.5 ? `<div class="pk-gain">×${gain >= 10 ? Math.round(gain) : gain.toFixed(1)}</div>` : ''}</div>
-    <div class="pk-cap"><span class="pk-name">${rank ? `<span class="pk-rank">#${rank}</span> ` : ''}${esc(x.n)}</span>
+    <div class="pk-cap"><span class="pk-name">${tierChip(x)}${rank ? `<span class="pk-rank">#${rank}</span> ` : ''}${esc(x.n)}</span>
       <span class="pk-money">${x.p ? money(x.p) : '–'}${x.v != null ? ` ▸ <b style="color:${x.v >= x.p ? '#43a047' : '#e53935'}">${money(x.v)}</b>` : ''}</span></div>`;
   const find = esc((x.n + ' ' + x.s + ' ' + x.sl + ' ' + x.pg + ' ' + x.d).toLowerCase());
   return `<div class="pocket" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" data-find="${find}" title="${esc(x.n + ' · ' + x.s + ' · ' + x.pg)}"${ring ? ` style="--ring:${ring}"` : ''}>${inner}</div>`;
@@ -698,7 +702,8 @@ const openSheet = (x, d, cx) => {
       ${x.if === 'same' ? '<div class="sh-meta" style="text-align:center">≈ photo of another copy of this card</div>' : ''}</div>
     <div style="min-width:0">
       <div class="sh-name">${esc(x.n)}</div>
-      <div class="sh-flags">${[...x.f].map(f => `<span style="background:${SHEET_FLAG[f][1]}">${SHEET_FLAG[f][0]}</span>`).join('')}</div>
+      <div class="sh-flags">${x.t ? `<span style="background:${TIER_COLOR[x.t]};color:#1a1a1a">${x.t} TIER</span>` : ''}${[...x.f].map(f => `<span style="background:${SHEET_FLAG[f][1]}">${SHEET_FLAG[f][0]}</span>`).join('')}</div>
+      ${x.tw && x.tw.length ? `<div class="sh-meta">Tier list: ${esc(x.tw.join(' · '))}</div>` : ''}
       <div class="sh-meta">${esc(x.s)} · page ${esc(x.pg)}${x.d ? '<br>bought ' + esc(x.d) : ''}${x.sl ? ' from ' + esc(x.sl) : ''}</div>
       <div class="sh-stats">
         <div class="sh-stat"><b>${x.p ? money(x.p) : '–'}</b><span>PAID</span></div>
@@ -2856,6 +2861,27 @@ const PANELS = {
       (unpaid.length > MAIL_SHOWN && !mailAll ? `<div style="padding-top:8px">${setBtn('Show all ' + unpaid.length, 'mail_limit', 'all', '#546e7a')}</div>` : '') : empty('Nothing waiting.')) + `</div>`;
   }],
 
+  tiers: ['Tier list', false, c => {
+    // Every card you own graded S to F on a curve against the rest: how rare, what it is,
+    // what it sells for, and your own front-page picks (bot: src/tierlist.py). Tap a card for its sheet.
+    const graded = c.cards.filter(x => x.t);
+    if (!graded.length) return empty('The tier list fills in once the bot has graded your cards.');
+    const view = store('tier_view', 'pics');
+    const by = t => graded.filter(x => x.t === t).sort((x, y) => (y.ts - x.ts) || ((y.v ?? y.p) - (x.v ?? x.p)));
+    const tile = x => x.i
+      ? `<span class="tier-card" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" title="${esc(x.n + (x.tw && x.tw.length ? ' · ' + x.tw.join(', ') : ''))}"><img src="${esc(x.i)}" loading="lazy" alt=""></span>`
+      : `<span class="tier-card tier-none" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" title="${esc(x.n)}">${esc(x.n.slice(0, 40))}</span>`;
+    const line = x => `<div class="line" role="button" tabindex="0" data-do="card" data-value="${esc(x.id)}" style="display:flex;gap:8px;align-items:center;padding:5px 0;cursor:pointer">
+      ${cardPic(x, 30, 42)}<span style="min-width:0;flex:1;font-size:13px">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc((x.tw || []).join(' · ') || 'nothing special yet')}</span></span>
+      <b style="flex:none;font-size:12px" class="muted">${Math.round(x.ts)} pts</b></div>`;
+    const rows = TIERS.map(t => { const xs = by(t); return `<div class="tier-row">
+      <div class="tier-label" style="background:${TIER_COLOR[t]}"><b>${t}</b><span>${xs.length}</span></div>
+      <div class="tier-cards">${xs.length ? (view === 'list' ? `<div style="flex:1;min-width:0">${xs.map(line).join('')}</div>` : xs.map(tile).join('')) : '<span class="muted" style="font-size:12px;padding:8px">none</span>'}</div></div>`; }).join('');
+    return `<div style="padding-top:8px"><div class="muted" style="font-size:12px;margin-bottom:8px">Your ${graded.length} cards on a curve: the top 5% are S, then 10% A, 20% B, 30% C, 20% D and 15% F. Points come from the print run, autos and relics, 1st Bowmans and his 2019 cards, rookies, slabs, short prints and case hits, what the card sells for, and your front-page picks. Tap a card to see why.</div>
+      ${chips('tier_view', 'pics', [['pics', '🖼️ Pictures'], ['list', '☰ With reasons']])}
+      <div class="tier-list">${rows}</div></div>`;
+  }],
+
   binder: ['Every card', false, c => {
     // Every card you own, ranked and filtered: a wall of pictures (the listing each one
     // was bought from) or a plain list. Year/type/status filters stack; the search box narrows further.
@@ -2883,9 +2909,10 @@ const PANELS = {
       year: (x, y) => yk(y, '0') < yk(x, '0') ? -1 : (yk(y, '0') > yk(x, '0') ? 1 : (x.n < y.n ? -1 : 1)),
       yearold: (x, y) => yk(x, '9') < yk(y, '9') ? -1 : (yk(x, '9') > yk(y, '9') ? 1 : (x.n < y.n ? -1 : 1)),
       name: (x, y) => x.n.replace(/^\d{4}\s*/, '') < y.n.replace(/^\d{4}\s*/, '') ? -1 : 1,
+      tier: (x, y) => (y.ts ?? -99) - (x.ts ?? -99),
     };
     cards.sort(SORTS[sort] || byDate);
-    const ranked = ['price', 'value', 'gain', 'steal'].includes(sort);
+    const ranked = ['price', 'value', 'gain', 'steal', 'tier'].includes(sort);
     const grouped = sort === 'year' || sort === 'yearold';
     const worthTxt = x => x.v == null ? '' : ` ▸ <b style="color:${x.v >= x.p ? '#2e7d32' : '#c62828'}">${money(x.v)}</b>`;
     const valued = cards.filter(x => x.v != null);
@@ -2916,7 +2943,7 @@ const PANELS = {
     return `<div style="padding-top:10px">${crown}
     <input data-search type="search" placeholder="Search ${total} cards: set, year, parallel, seller…" value="${esc(c.card.query)}">` +
     `<div class="row" style="align-items:center;margin-top:8px">` +
-      sel('cardsort', sort, [['new', '🆕 Newest buys'], ['value', '💎 Worth most'], ['price', '💳 Priciest paid'], ['gain', '📈 Biggest gain (×)'], ['steal', '🏷️ Best buys (% of worth)'], ['year', '📅 Year, newest first'], ['yearold', '📅 Year, oldest first'], ['name', '🔤 Set A–Z']]) +
+      sel('cardsort', sort, [['new', '🆕 Newest buys'], ['value', '💎 Worth most'], ['price', '💳 Priciest paid'], ['gain', '📈 Biggest gain (×)'], ['steal', '🏷️ Best buys (% of worth)'], ['tier', '🏆 Tier list, S first'], ['year', '📅 Year, newest first'], ['yearold', '📅 Year, oldest first'], ['name', '🔤 Set A–Z']]) +
       sel('binder_year', year, [['all', 'Every year'], ...years.map(y => [y, y])]) +
       sel('binder_kind', kind, [['all', 'Every kind'], ...Object.entries(KINDS).map(([k, [l]]) => [k, l])]) +
       sel('status', status, [['all', 'Anywhere'], ['In binder', 'In the binder'], ['Delivered', 'To file'], ['In transit', 'In transit'], ['Won', 'Won, not shipped'], ['flag', 'Hits']]) +
@@ -3218,6 +3245,17 @@ const STYLE = `
   @media (max-width: 500px) { .jewels { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 42%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; }
                               .jewel { scroll-snap-align: start; } }
   .pk-rank { font-weight: 800; color: var(--primary-color); }
+  .tier-chip { display: inline-block; min-width: 15px; padding: 0 3px; margin-right: 4px; border-radius: 4px; font-size: 10px; line-height: 15px; font-weight: 900; text-align: center; color: #1a1a1a; vertical-align: 1px; }
+  .tier-list { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; border-radius: 8px; overflow: hidden; }
+  .tier-row { display: flex; min-height: 74px; background: #8881; }
+  .tier-label { flex: none; width: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #1a1a1a; }
+  .tier-label b { font-size: 28px; line-height: 1; } .tier-label span { font-size: 11px; opacity: .7; }
+  .tier-cards { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; align-content: flex-start; }
+  .tier-card { width: 48px; height: 67px; border-radius: 4px; overflow: hidden; cursor: pointer; background: #0002; flex: none; }
+  .tier-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tier-card:hover { outline: 2px solid var(--primary-color); }
+  .tier-none { font-size: 8px; line-height: 1.15; padding: 3px; color: var(--secondary-text-color); }
+  @media (max-width: 520px) { .tier-label { width: 40px; } .tier-label b { font-size: 22px; } .tier-card { width: 40px; height: 56px; } }
   .pk-year { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 10px; padding: 6px 2px 0; font-size: 20px; }
   .pk-year:not(:first-child) { margin-top: 10px; border-top: 1px solid var(--divider-color); padding-top: 12px; }
   .pk-year .muted, .pk-year-list .muted { font-size: 12px; }
@@ -3884,6 +3922,7 @@ class SnipeHuntStrategy {
         {...section(heading('Trophy Case', 'mdi:trophy'), panel('trophies')), column_span: 2},
       ]},
       binder: {title: 'Binder', path: 'binder', icon: 'mdi:view-grid', sections: [
+        {...section(heading('Tier list', 'mdi:podium-gold'), panel('tiers')), column_span: 3},
         {...section(heading('The binder', 'mdi:view-grid'), panel('binder')), column_span: 3},
       ]},
       pages: {title: 'Pages', path: 'pages', icon: 'mdi:book-open-page-variant', sections: [
