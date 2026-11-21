@@ -4016,6 +4016,7 @@ class SnipeHuntStrategy {
     if (!upgraded.includes('binder')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'binder');
     if (!upgraded.includes('trophies')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'trophies');
     if (!upgraded.includes('pages')) upgraded.splice(upgraded.includes('binder') ? upgraded.indexOf('binder') + 1 : upgraded.length, 0, 'pages');
+    if (!upgraded.includes('slabs')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'slabs');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,
