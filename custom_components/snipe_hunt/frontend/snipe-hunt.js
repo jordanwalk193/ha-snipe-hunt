@@ -1936,6 +1936,53 @@ const PANELS = {
         saved(p) >= 0.5 ? ` <b style="color:var(--primary-text-color);white-space:nowrap">· ${worth(saved(p))} under</b>` : '')).join('');
   }],
 
+  slab_hunt: ['Slab Hunter', false, c => {
+    // The bot's slabhunt.md: Walker's key cards as long-term holds in top grade,
+    // each with its going rate per grade, the deal line and the live copies.
+    const v = c.d.slab_hunt;
+    if (!v) return empty('Update the bot to see this: it needs a version with Slab Hunter (slabhunt.md).');
+    if (!v.rows.length) return empty('slabhunt.md in the bot\'s repo is empty. Add the slabs you want to hold.');
+    const GRADE = g => g === 'bgs bl' ? pill('BGS 10 Black Label', '#212121') : g.startsWith('psa') ? pill(esc(g.toUpperCase()), '#c62828') : pill(esc(g.toUpperCase()), '#1565c0');
+    const rateTxt = (r, g) => {
+      const x = r.rates[g === 'bgs bl' ? 'bgs 10' : g];
+      if (!x || x.rate == null) return 'no rate yet';
+      const basis = x.basis === 'sales' ? `${x.n} sold` : x.basis === 'fallback' ? 'estimate' : (g === 'bgs 9.5' ? `PSA 10 rate × ${v.bgs95_share}` : 'PSA 10 rate');
+      return `going <b style="color:var(--primary-text-color)">${x.basis === 'sales' ? '' : '~'}${money(x.rate)}</b> <span class="muted">(${basis})</span> · deal ≤ <b style="color:#2e7d32">${money(x.line)}</b>`;
+    };
+    const head = r => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
+        <div style="min-width:0"><b>${esc(r.card)}</b>${r.deal ? ' ' + pill('🔥 Deal', '#2e7d32') : ''}
+          <div style="font-size:12px;margin-top:3px">${r.owned ? pill('✓ You own ' + esc(r.owned.toUpperCase()), '#2e7d32') + ' ' : ''}${r.have ? pill('You have ' + esc(r.have) + ' ↑', '#ef6c00') + ' ' : ''}<span class="muted">${esc(r.why)}</span></div>
+          <div style="font-size:12px;margin-top:3px">${rateTxt(r, 'psa 10')}</div></div>
+        <a class="btn" href="${esc(r.ebay)}" target="_blank" rel="noopener" style="flex:none">eBay</a></div>`;
+    const copy = (x, r) => {
+      const deal = x.under != null && x.under >= 0;
+      const rate = (r.rates[x.grade === 'bgs bl' ? 'bgs 10' : x.grade] || {}).rate;
+      const cost = x.likely != null ? x.likely + (x.shipping == null ? 5 : x.shipping) : x.total;
+      const off = rate ? Math.round((1 - cost / rate) * 100) : null;
+      const how = x.is_auction ? 'auction' + (x.bids ? ', ' + x.bids + (x.bids === 1 ? ' bid' : ' bids') : '') + (x.likely != null ? `, likely ~${money(x.likely)}` : '') + (x.end_time ? ', ends ' + when(x.end_time) : '') : (x.best_offer ? 'Best Offer' : 'Buy It Now');
+      return `<div data-row class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0 8px 6px">${thumb(x, 44, 60)}
+        <div style="flex:1;min-width:0"><a class="title" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>
+          <div style="font-size:13px;margin-top:2px">${GRADE(x.grade)} ${deal && off != null ? pill('🔥 ' + off + '% under going rate', '#2e7d32') + ' ' : ''}<b>${money(x.price)}</b> + ${shipTxt(x)} · ${how}</div>
+          <div class="muted" style="font-size:11px;margin-top:2px">${x.line != null ? 'deal line ' + money(x.line) + ' · ' : ''}${esc(x.seller)} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(x.item_id)}</b></div></div></div>`;
+    };
+    const view = store('slab_view', v.live_n ? 'sale' : 'list');
+    const sale = v.rows.filter(r => r.live.length);
+    let body;
+    if (view === 'sale') {
+      body = sale.length ? sale.map(r => `<div class="line" style="padding:10px 0">${head(r)}${r.live.slice(0, 3).map(x => copy(x, r)).join('')}${r.live.length > 3 ? `<div class="muted" style="font-size:12px;padding:2px 0 0 6px">+${r.live.length - 3} more: <a href="${esc(r.ebay)}" target="_blank" rel="noopener">see them on eBay</a></div>` : ''}</div>`).join('')
+        : empty('None of these slabs is for sale in the copies the bot has seen yet. It searches four of them every hour and alerts you when a new one is listed under its deal line.');
+    } else {
+      body = v.rows.map(r => `<div class="line" style="padding:9px 0">${head(r)}<div class="muted" style="font-size:12px;margin-top:3px">${r.grades.map(g => g.toUpperCase()).join(' · ')} · ${r.live.length ? `<b style="color:var(--primary-text-color)">${r.live.length}</b> for sale now` : 'none for sale now'}</div></div>`).join('');
+    }
+    return `<div style="padding-top:10px"></div>` + grid(4, [
+      stat('ON THE LIST', v.n, '#c62828', '🧱'),
+      stat('DEALS NOW', v.deals_n, '#2e7d32', '🔥'),
+      stat('FOR SALE', v.live_n, '#1e88e5', '🛒'),
+      stat('YOU OWN', v.owned_n, '#546e7a', '📒'),
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5">Long-term holds: his key cards in PSA 10 (king), or Beckett 9.5 / 10 / Black Label. CGC and SGC never count. A deal is ${Math.round((1 - v.deal_share) * 100)}% or more under the going rate for that grade; auctions go by their likely close. Edit the list in the bot's slabhunt.md.</div>` +
+      chips('slab_view', 'list', [['sale', '🛒 For sale' + (v.live_n ? ' ' + v.live_n : '')], ['list', '📋 The list']], view) + body;
+  }],
+
   priority: ['Case hits & priority', false, c => {
     // The bot's casehits.md: the cards hunted first, every live copy cheapest
     // first against the row's ceiling, and the "hype" cards titled SSP or case
@@ -3916,6 +3963,9 @@ class SnipeHuntStrategy {
         {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
         {...section(heading('The Walker Wall', 'mdi:view-comfy'), panel('wall')), column_span: 3},
+      ]},
+      slabs: {title: 'Slabs', path: 'slabs', icon: 'mdi:medal', sections: [
+        {...section(heading('Slab Hunter', 'mdi:medal'), panel('slab_hunt')), column_span: 3},
       ]},
       trophies: {title: 'Trophies', path: 'trophies', icon: 'mdi:trophy', sections: [
         section(heading('Brag card', 'mdi:share-variant'), panel('bragcard')),
