@@ -2646,6 +2646,39 @@ const PANELS = {
       ${m.missed_steals ? `<br>Missed steals in the last 30 days: ${m.missed_steals} sold well under their usual price with no pick from the bot.` : ''}</div></div>`;
   }],
 
+  accuracy: ['How good are the prices', false, c => {
+    const a = c.d.accuracy;
+    if (a === undefined) return empty('Update the bot to see this: it needs a version that grades its own prices.');
+    if (!a || !a.all) return empty('The first price check runs with the 9am daily job: every recent sale re-priced from only the sales before it.');
+    const g = a.all, ok = '#43a047', hi = '#fb8c00', lo = '#1e88e5';
+    const tilt = b => b >= 1.05 ? `runs ${Math.round((b - 1) * 100)}% high` : b <= 0.95 ? `runs ${Math.round((1 - b) * 100)}% low` : 'right on average';
+    const row = (label, x) => `<div class=line style="padding:6px 0;font-size:13px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(label)}</b><span class=muted>${x.n} sales · ${x.close}% close · ${tilt(x.bias)}</span></div>
+      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-top:4px;background:var(--divider-color)">
+        <span style="flex:${x.low};background:${lo}"></span><span style="flex:${x.close};background:${ok}"></span><span style="flex:${x.high};background:${hi}"></span></div></div>`;
+    const names = {auction: 'Auctions', bin: 'Buy It Now', base: 'Base cards', insert: 'Inserts', numbered: 'Numbered', graded: 'Slabs', auto: 'Autos'};
+    const group = (title, obj) => {
+      const ks = Object.keys(obj || {}).filter(k => obj[k]);
+      return ks.length ? cap(title) + ks.map(k => row(names[k] || k, obj[k])).join('') : '';
+    };
+    const weeks = (a.weeks || []).length > 1 ? cap('WEEK BY WEEK · % CLOSE') + `<div style="display:flex;gap:6px;align-items:flex-end;height:64px;padding-top:6px">` +
+      a.weeks.map(w => `<div style="flex:1;text-align:center;font-size:11px"><div style="height:${Math.max(4, Math.round(w.close * 0.44))}px;background:${ok};border-radius:3px 3px 0 0;opacity:.85"></div>
+        <b>${w.close}%</b><div class=muted>${esc(w.label)}</div></div>`).join('') + `</div>` : '';
+    const hist = (a.history || []).filter(h => h.close != null);
+    const trend = hist.length > 1 ? `<div class=muted style="font-size:12px;margin-top:6px">Since ${esc(hist[0].date)}: ${hist[0].close}% → <b>${hist[hist.length - 1].close}%</b> close.</div>` : '';
+    const misses = (a.misses || []).length ? cap('BIGGEST MISSES · WHAT TO TAKE WITH SALT') + a.misses.map(m => `<div class=line style="padding:6px 0;font-size:12px">
+      <a href="https://www.ebay.com/itm/${esc(m.id)}" target="_blank" rel="noopener">${esc(whole(m.title))}</a>
+      <div class=muted>${esc(m.date)} · ${m.kind === 'bin' ? 'Buy It Now' : 'auction'} · bot said <b>${money(m.v)}</b>, sold <b>${money(m.t)}</b> · from ${m.n} sale${m.n === 1 ? '' : 's'}${m.mixed ? ' of other parallels' : ''}</div></div>`).join('') : '';
+    return `<div style="padding-top:10px">` + grid(3, [
+      stat('CLOSE', g.close + '%', ok, '🎯'),
+      stat('TYPICAL MISS', money(g.miss), '#8e24aa', '📏'),
+      stat('ON AVERAGE', g.bias >= 1 ? '+' + Math.round((g.bias - 1) * 100) + '%' : '−' + Math.round((1 - g.bias) * 100) + '%', g.bias > 1.05 ? hi : g.bias < 0.95 ? lo : ok, '⚖️'),
+    ]) + stack([['Too low', g.low, lo], ['Close', g.close, ok], ['Too high', g.high, hi]], 100) +
+      `<div class=muted style="font-size:12px;margin:6px 0 2px;line-height:1.5">${g.n} Walker sales from the last ${a.days} days, each re-priced by today's bot from only the sales before it, then set against what the buyer really paid with shipping. Close = within ${Math.round(a.close_band * 100)}% or ${money(a.close_dollars)}.
+      ${(a.by_depth || {})['1 sale'] ? ` Values from a single earlier sale are the shakiest (${a.by_depth['1 sale'].close}% close): the pick's star count already says so.` : ''}</div>` +
+      trend + weeks + group('BY KIND OF LISTING', a.by_kind) + group('BY HOW MANY SALES IT HAD', a.by_depth) + group('BY CARD', a.by_type) + misses + `</div>`;
+  }],
+
   sold: ['Sold prices', false, c => {
     const m = c.d.market;
     if (!m) return empty('Update the bot to see this: it needs a version that records sold prices.');
@@ -3980,6 +4013,7 @@ class SnipeHuntStrategy {
       ]},
       stats: {title: 'Stats & bot', path: 'stats', icon: 'mdi:chart-box-outline', sections: [
         section(heading('How the calls turned out', 'mdi:bullseye-arrow'), panel('calls'), heading('Where steals happen', 'mdi:map-marker-radius'), panel('closes')),
+        section(heading('How good are the prices', 'mdi:scale-balance'), panel('accuracy')),
         section(heading('What the collection is worth', 'mdi:diamond-stone'), panel('worth'), heading('How it grew', 'mdi:chart-areaspline'), panel('growth'), heading('Market trends', 'mdi:trending-up'), panel('trends'), heading('Products over time', 'mdi:calendar-clock'), panel('products')),
         section(heading('Walker on the field', 'mdi:baseball'), panel('player')),
         section(heading('Big money', 'mdi:cash-multiple'), panel('whales')),
