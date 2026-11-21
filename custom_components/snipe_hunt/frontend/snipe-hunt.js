@@ -1957,7 +1957,7 @@ const PANELS = {
     const copy = (x, r) => {
       const deal = x.under != null && x.under >= 0;
       const rate = (r.rates[x.grade === 'bgs bl' ? 'bgs 10' : x.grade] || {}).rate;
-      const cost = x.likely != null ? x.likely + (x.shipping == null ? 5 : x.shipping) : x.total;
+      const cost = x.likely != null ? Math.max(x.likely, x.price) + (x.shipping == null ? 5 : x.shipping) : x.total;   // never below the current bid
       const off = rate ? Math.round((1 - cost / rate) * 100) : null;
       const how = x.is_auction ? 'auction' + (x.bids ? ', ' + x.bids + (x.bids === 1 ? ' bid' : ' bids') : '') + (x.likely != null ? `, likely ~${money(x.likely)}` : '') + (x.end_time ? ', ends ' + when(x.end_time) : '') : (x.best_offer ? 'Best Offer' : 'Buy It Now');
       return `<div data-row class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0 8px 6px">${thumb(x, 44, 60)}
