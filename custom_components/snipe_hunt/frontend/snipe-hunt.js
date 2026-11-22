@@ -3102,6 +3102,35 @@ const PANELS = {
   }],
 
   incoming: ['Incoming', false, c => PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
+  needs_details: ['Needs details', false, c => {
+    // Cards too vague for the dupe check (the bot's needs_details, src/inventory_sync.py):
+    // an unsplit lot, "check the back", a title cut off in the email. Lots first; cards
+    // that only lack a card number are folded into one line. Nothing to say: the card hides.
+    const all = c.d.needs_details || [];
+    if (!all.length) return '<style>:host{display:none !important}</style>';
+    const lotLike = d => d.kind === 'lot' || /\blot\b/i.test((d.why || '') + ' ' + (d.card || ''));
+    const size = d => +(((d.why || '') + ' ' + (d.card || '')).match(/(\d+)-card lot/i) || [0, 0])[1];
+    const flags = all.filter(d => d.kind !== 'number')   // lots first, biggest first
+      .sort((a, b) => !lotLike(a) - !lotLike(b) || size(b) - size(a));
+    const numbers = all.filter(d => d.kind === 'number');
+    const num = d => String(d.id).replace('lot-', '');
+    const row = d => {
+      const tag = lotLike(d) ? tpill('🃏 lot', '#6a1b9a', 'Bought as a lot: say which cards came in it')
+                             : tpill('🔍 check', '#1e88e5', 'Look at the card itself');
+      return `<div class="line" style="padding:6px 0;font-size:13px;line-height:1.35">
+        ${tag} <b>#${esc(num(d))}</b> ${esc(d.card || '')}
+        <div class="muted" style="font-size:12px;margin-top:2px;overflow-wrap:anywhere">${esc(d.why || '')}</div></div>`;
+    };
+    const SHOWN = 6;
+    const more = flags.length > SHOWN
+      ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:12px">Show ${flags.length - SHOWN} more</summary>${flags.slice(SHOWN).map(row).join('')}</details>`
+      : '';
+    const nums = numbers.length
+      ? `<div class="muted" style="font-size:12px;margin-top:8px">${numbers.length} more card${numbers.length === 1 ? '' : 's'} only need their card number: ${numbers.map(d => '#' + esc(num(d))).join(', ')}</div>`
+      : '';
+    return `<div class="muted" style="font-size:12px;margin-bottom:6px">The dupe check can't see these cards well. Tell Claude what's on the card (or what came in the lot) and it drops off this list.</div>`
+      + flags.slice(0, SHOWN).map(row).join('') + more + nums;
+  }],
 
   missing: ["What's missing", false, c => {
     const view = store('missing_view', 'must');
@@ -3992,6 +4021,7 @@ class SnipeHuntStrategy {
           budget ? {type: 'tile', entity: budget, name: 'Monthly budget', features: [{type: 'numeric-input', style: 'buttons'}], features_position: 'bottom', grid_options: {columns: 'full'}} : null,
           graph(240, ['month_spend'], 'Spend this month')),
         section(heading('Incoming', 'mdi:package-variant-closed', id('sensor', 'in_transit')), panel('incoming')),
+        section(heading('Needs details', 'mdi:help-box-multiple-outline'), panel('needs_details')),
         section(heading("What's missing", 'mdi:star-box-multiple'), panel('missing'), heading('Worth grading', 'mdi:medal-outline'), panel('grading')),
         {...section(heading('Gaps in the collection', 'mdi:puzzle-outline'), panel('gaps')), column_span: 2},
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
