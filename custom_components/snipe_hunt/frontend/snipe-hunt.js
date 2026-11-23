@@ -1195,16 +1195,19 @@ const sectionHead = (s, counts, n = 9) => {
     <b style="font-size:15px">${esc(s.title)}</b>
     <span class="muted" style="font-size:12px">${counts ? s.used + ' of ' + s.pages * n + ' pockets · ' : ''}${s.pages === 1 ? 'binder page ' + s.start : 'binder pages ' + s.start + '–' + end} ${chipsHtml}</span></div>`;
 };
-const pageGrids = (c, s, g, hot = new Set()) => `<div class="bp-pages">` + g.map((page, pi) =>
+// drag = the live binder (not a setup or re-sort preview): each pocket says where it is and
+// each card can be dragged to another pocket of its section (binder_move; SnipeHuntCard.drag*)
+const pageGrids = (c, s, g, hot = new Set(), drag = false) => `<div class="bp-pages">` + g.map((page, pi) =>
   `<div class="bp-page${(BP_COLS[page.length] || 3) > 3 ? ' wide' : ''}"><div class="bp-label">${pi === 0 && s.key !== 'front' ? '⭐ ' : ''}p${pi + 1}${pi === 0 && s.key !== 'front' ? ' · showcase' : ''}${pi + 1 > s.pages ? ' · over' : ''}</div><div class="bp-grid" style="grid-template-columns:repeat(${BP_COLS[page.length] || 3},1fr)">` +
   page.map((id, ki) => {
     const isHot = !id && hot.has([s.key, pi + 1, ki + 1].join('|'));   // an empty pocket a waiting card goes into
-    if (!id) return `<div class="bp-pk empty${isHot ? ' hot' : ''}"></div>`;
+    const spot = drag ? ` data-spot="${esc(s.key)}|${pi + 1}|${ki + 1}"` : '';
+    if (!id) return `<div class="bp-pk empty${isHot ? ' hot' : ''}"${spot}></div>`;
     const x = c.art.get(String(id)) || {id, n: '#' + id, f: ''};
     const flip = (x.f || '').includes('D');
     const inner = x.i ? `<img src="${esc(x.i)}" loading="lazy" alt="" data-do="card" data-value="${esc(x.id)}" role="button" title="${esc(x.n)}">`
       : `<div class="bp-none" data-do="card" data-value="${esc(x.id)}" role="button">${esc(x.n)}</div>`;
-    return `<div class="bp-pk${flip ? ' flip' : ''}">${inner}${flip ? '<span class="bp-tag">↩ back</span>' : ''}</div>`;
+    return `<div class="bp-pk${flip ? ' flip' : ''}"${spot}${drag ? ` data-drag="${esc(x.id)}"` : ''}>${inner}${flip ? '<span class="bp-tag">↩ back</span>' : ''}</div>`;
   }).join('') + `</div></div>`).join('') + `</div>`;
 const REASON = {'move it': ['move it', '#1e88e5'], 'take it out': ['take it out', '#6d4c41'], 'needs a spot': ['needs a spot', '#8e24aa'],
   'section full': ['section full', '#e53935'], 'after its twin': ['flip it behind its twin', '#546e7a']};
@@ -2896,9 +2899,10 @@ const PANELS = {
            <div class="row">${act('✅ Done, re-sorted', {action: 'binder_resort', section: s.key, layout, expect}, {color: '#43a047', busy: 'Saving…'})}${setBtn('Cancel', 'resort_open', '')}</div>`
         : (s.blocked ? `<div class="muted" style="font-size:11px;padding:4px 0">↕️ Re-sort after this section's move it / take it out cards are done.</div>`
           : `<div class="row">${setBtn(s.resort_suggested ? '↕️ Re-sort (suggested)' : '↕️ Re-sort', 'resort_open', s.key, s.resort_suggested ? '#fb8c00' : null)}</div>`);
-      return `<div class="bp-sec">` + sectionHead(s, true, bpSize(b)) + tools + pageGrids(c, s, g, resorting ? new Set() : hot) + `</div>`;
+      return `<div class="bp-sec">` + sectionHead(s, true, bpSize(b)) + tools + pageGrids(c, s, g, resorting ? new Set() : hot, !resorting) + `</div>`;
     }).join('');
-    return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + pocketSwitch(b) + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
+    return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + pocketSwitch(b) +
+      `<div class="muted" style="font-size:12px;margin:2px 0 4px">✋ Drag a card to another pocket of its section (on a phone: press and hold, then drag). Dropping on a card swaps the two.</div>` + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
   }],
 
   to_file: ['To file in the binder', false, c => {
@@ -3539,6 +3543,10 @@ const STYLE = `
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
   /* Binder pages: each page a 3x3 (or 4x4...) sheet of pockets */
   .bp-page.wide, .bp-sec .bp-page.wide { flex-basis: 260px; max-width: 320px; }
+  [data-drag] img, [data-drag] .bp-none { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+  [data-drag] { cursor: grab; }
+  .bp-pk.dragging { opacity: .25; }
+  .bp-pk.drop-over { outline: 3px solid #43a047; outline-offset: 1px; }
   .bp-pages { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .bp-page { flex: 1 1 170px; max-width: 240px; min-width: 0; }
   .bp-label { font-size: 11px; font-weight: 700; color: var(--secondary-text-color); margin-bottom: 3px; }
@@ -3937,6 +3945,19 @@ class SnipeHuntCard extends HTMLElement {
     this.body = this.shadowRoot.getElementById('body');
     this.query = '';
     this.shadowRoot.addEventListener('click', ev => this.clicked(ev));
+    // Binder pages: drag a card to another pocket. Mouse: press and move. Finger: hold, then move
+    // (a plain swipe still scrolls and a tap still opens the card).
+    this.shadowRoot.addEventListener('pointerdown', ev => { if (ev.pointerType === 'mouse' && ev.button === 0) this.dragDown(ev, ev.clientX, ev.clientY, 'mouse'); });
+    this.shadowRoot.addEventListener('touchstart', ev => { if (ev.touches.length === 1) this.dragDown(ev, ev.touches[0].clientX, ev.touches[0].clientY, 'touch'); }, {passive: true});
+    this.shadowRoot.addEventListener('touchmove', ev => {
+      const d = this._drag; if (!d) return;
+      const t = ev.touches[0];
+      if (d.started) { ev.preventDefault(); this.dragMove(t.clientX, t.clientY); }
+      else if (Math.hypot(t.clientX - d.x0, t.clientY - d.y0) > 8) this.dragEnd(false);   // a swipe: let it scroll
+    }, {passive: false});
+    this.shadowRoot.addEventListener('touchend', ev => { if (this._drag) { if (this._drag.started) ev.preventDefault(); this.dragEnd(true); } });
+    this.shadowRoot.addEventListener('touchcancel', () => this.dragEnd(false));
+    this.shadowRoot.addEventListener('contextmenu', ev => { if (this._drag) ev.preventDefault(); });
     this.shadowRoot.addEventListener('change', ev => {   // a <select data-do="set"> chooses like a chip
       const el = ev.target;
       if (el.matches('select[data-do="set"]')) { scope = this.feed.entry || ''; remember(el.dataset.key, el.value); this.feed.redraw(); }
@@ -3948,6 +3969,73 @@ class SnipeHuntCard extends HTMLElement {
   }
 
   static getStubConfig() { return {panel: 'summary'}; }
+
+  dragDown(ev, x, y, kind) {
+    const pk = ev.target.closest && ev.target.closest('[data-drag]');
+    if (!pk || this._drag) return;
+    this._drag = {id: pk.dataset.drag, from: pk.dataset.spot, el: pk, x0: x, y0: y, kind, started: false, over: null};
+    if (kind === 'touch') this._drag.timer = setTimeout(() => this.dragBegin(x, y), 350);
+    else {
+      const move = e => {
+        if (!this._drag) return;
+        if (!this._drag.started && Math.hypot(e.clientX - x, e.clientY - y) > 6) this.dragBegin(e.clientX, e.clientY);
+        if (this._drag && this._drag.started) { e.preventDefault(); this.dragMove(e.clientX, e.clientY); }
+      };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this.dragEnd(true); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+      ev.preventDefault();   // no text selection or native image drag
+    }
+  }
+
+  dragBegin(x, y) {
+    const d = this._drag; if (!d || d.started) return;
+    d.started = true;
+    const r = d.el.getBoundingClientRect();
+    const g = d.el.cloneNode(true);
+    g.removeAttribute('data-drag'); g.removeAttribute('data-spot');
+    Object.assign(g.style, {position: 'fixed', left: '0', top: '0', width: r.width + 'px', height: r.height + 'px', zIndex: 2147483000,
+      pointerEvents: 'none', opacity: '.92', transform: `translate(${x - r.width / 2}px, ${y - r.height / 2}px) scale(1.08)`,
+      boxShadow: '0 8px 24px #0006', borderRadius: '6px', overflow: 'hidden'});
+    g.querySelectorAll('img').forEach(i => Object.assign(i.style, {width: '100%', height: '100%', objectFit: 'cover'}));
+    document.body.appendChild(g);
+    d.ghost = g; d.w = r.width; d.h = r.height;
+    d.el.classList.add('dragging');
+    if (navigator.vibrate) navigator.vibrate(12);
+  }
+
+  dragMove(x, y) {
+    const d = this._drag; if (!d || !d.ghost) return;
+    d.ghost.style.transform = `translate(${x - d.w / 2}px, ${y - d.h / 2}px) scale(1.08)`;
+    d.x = x; d.y = y;
+    const hit = this.shadowRoot.elementFromPoint ? this.shadowRoot.elementFromPoint(x, y) : null;
+    const over = hit && hit.closest('[data-spot]');
+    if (over !== d.over) {
+      if (d.over) d.over.classList.remove('drop-over');
+      d.over = over && over !== d.el ? over : null;
+      if (d.over) d.over.classList.add('drop-over');
+    }
+  }
+
+  dragEnd(drop) {
+    const d = this._drag; if (!d) return;
+    clearTimeout(d.timer);
+    this._drag = null;
+    if (!d.started) return;   // a tap: the click opens the card as usual
+    this._noClick = true; setTimeout(() => { this._noClick = false; }, 400);
+    if (d.ghost) d.ghost.remove();
+    d.el.classList.remove('dragging');
+    if (d.over) d.over.classList.remove('drop-over');
+    const to = drop && d.over ? d.over.dataset.spot : null;
+    if (!to || to === d.from) return this.feed.redraw();
+    const spot = v => { const [k, p, n] = v.split('|'); return [k, +p, +n]; };
+    if (spot(to)[0] !== spot(d.from)[0]) { this.toast('Cards stay in their own section: drag within it.'); return this.feed.redraw(); }
+    // show it at once; the bot's answer (and its next snapshot) is the truth
+    const other = d.over.hasAttribute('data-drag') ? d.over.innerHTML : null;
+    d.over.innerHTML = d.el.innerHTML; d.el.innerHTML = other || '';
+    this._hass.callWS({type: DOMAIN + '/action', action: 'binder_move', data: {id: d.id, from: spot(d.from), to: spot(to)}, ...this.who()})
+      .then(res => { this.toast(res.message); this.feed.redraw(); })
+      .catch(err => { this.toast((err && err.message) || 'That did not move'); this._html = null; this.feed.redraw(); });
+  }
   static getConfigForm() {
     return {
       schema: [
@@ -4027,6 +4115,7 @@ class SnipeHuntCard extends HTMLElement {
       return;
     }
     if (this.shadowRoot.querySelector('[data-armed]')) return;   // mid two-tap confirm
+    if (this._drag && this._drag.started) return;   // mid drag: redraw after the drop
     scope = this.feed.entry || '';
     const typing = this.shadowRoot.activeElement;
     if (typing && typing.matches('input[data-fb-note]')) return;   // mid "bad pick" note
@@ -4107,6 +4196,7 @@ class SnipeHuntCard extends HTMLElement {
   }
 
   clicked(ev) {
+    if (this._noClick) { ev.preventDefault(); return; }   // the click a drag ends with
     // Open links the way Home Assistant's own "url" action does. A plain
     // target=_blank link does nothing in some of the phone apps' web views.
     const link = ev.target.closest('a[href]');
