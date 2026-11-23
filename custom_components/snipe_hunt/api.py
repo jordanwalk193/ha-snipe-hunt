@@ -63,6 +63,15 @@ class SnipeHuntClient:
         """One side of a binder card for a grade check. Returns ok, message and status."""
         return await self._request("POST", "/api/photo", data)
 
+    async def async_brain(self, op: str, data: dict[str, Any]) -> dict[str, Any]:
+        """The brain (the bot's chat): send, chat, chats or delete."""
+        return await self._request("POST", f"/api/brain/{op}", data)
+
+    @property
+    def brain_page(self) -> str:
+        """The bot's own Brain page, for the phone at a card show."""
+        return self._url + "/brain"
+
     async def async_settings(self, changes: dict[str, Any]) -> dict[str, Any]:
         """Change bot settings. Returns ok, message and a fresh snapshot."""
         return await self._request("POST", "/api/settings", changes)

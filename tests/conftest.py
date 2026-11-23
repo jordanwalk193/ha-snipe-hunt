@@ -91,6 +91,15 @@ class FakeBot:
                 else "That card isn't a raw card in the collection",
                 "status": "waiting for the back" if ok else None}
 
+    brain_page = "http://bot.test:8766/brain"
+
+    async def async_brain(self, op: str, data: dict) -> dict:
+        self.brains = getattr(self, "brains", []) + [(op, data)]
+        if op == "chat" and data.get("chat_id") == "nope":
+            return {"ok": False, "message": "Unknown chat"}
+        return {"ok": True, "id": "abc123def456", "turns": [{"role": "you", "text": data.get("text", "")},
+                                                           {"role": "brain", "status": "reading"}]}
+
     async def async_settings(self, changes: dict) -> dict:
         self.settings.append(changes)
         self.snapshot["settings"].update(changes)

@@ -410,3 +410,23 @@ async def test_wall_command_forwards_to_the_bot(hass, entry, bot, hass_ws_client
     await client.send_json_auto_id({"type": "snipe_hunt/wall"})
     reply = await client.receive_json()
     assert reply["success"] and reply["result"]["total"] == 1 and bot.walls == 1
+
+
+async def test_brain_websocket(hass, entry, bot, hass_ws_client):
+    client = await hass_ws_client(hass)
+
+    async def ask(msg):
+        await client.send_json_auto_id(msg)
+        reply = await client.receive_json()
+        while reply["type"] == "event":
+            reply = await client.receive_json()
+        return reply
+
+    reply = await ask({"type": "snipe_hunt/brain", "op": "send", "text": "do I have this?", "images": ["AAAA"]})
+    assert reply["success"] and reply["result"]["id"] == "abc123def456"
+    assert reply["result"]["page"] == "http://bot.test:8766/brain"
+    assert bot.brains[-1] == ("send", {"text": "do I have this?", "images": ["AAAA"]})
+    reply = await ask({"type": "snipe_hunt/brain", "op": "chat", "chat_id": "nope"})
+    assert not reply["success"] and "Unknown chat" in reply["error"]["message"]
+    reply = await ask({"type": "snipe_hunt/brain", "op": "bid"})
+    assert not reply["success"]   # only send/chat/chats/delete exist

@@ -192,6 +192,11 @@ Services: `snipe_hunt.search_now`, `refresh`, `skip_pick` (`item_id`), `pick_fee
 - `GET /api/snapshot`: one JSON object with `api: 1`, `status`, `picks`, `gixen`, `cards`, `collection`, `pipeline`, `record`, `wantlist`, `settings` and `last_action`.
 - `POST /api/action`: `{"action": "...", ...}`; answers `{"ok", "message", "snapshot"}`.
 - `POST /api/settings`: `{"setting": value, ...}`; same answer.
+- Optional, for the **Brain** tab (a chat with the bot, card photos welcome): `POST /api/brain/send`
+  `{"text", "images": [base64 JPEG...], "chat_id"}` answers the chat at once with the reply turn
+  `"status": "reading" | "thinking"`; the tab polls `POST /api/brain/chat` `{"chat_id"}` until it is
+  `done` or `failed`. Also `/api/brain/chats` and `/api/brain/delete`. A bot without them shows
+  "needs a newer bot" in the tab and nothing else changes.
 
 ## License
 

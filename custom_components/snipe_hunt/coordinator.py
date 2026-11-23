@@ -108,6 +108,16 @@ class SnipeHuntCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise HomeAssistantError(result.get("message") or "The bot refused the photo")
         return {"message": result.get("message") or "Saved", "status": result.get("status")}
 
+    async def async_brain(self, op: str, data: dict[str, Any]) -> dict[str, Any]:
+        """Talk to the brain. An answer runs on the bot in the background; poll "chat"."""
+        try:
+            result = await self.client.async_brain(op, data)
+        except SnipeHuntError as err:
+            raise HomeAssistantError(str(err)) from err
+        if result.get("ok") is False:
+            raise HomeAssistantError(result.get("message") or "The brain refused that")
+        return {**result, "page": self.client.brain_page}
+
     async def async_set_setting(self, key: str, value: Any) -> None:
         """Change one bot setting."""
         await self._async_send(self.client.async_settings, {key: value})

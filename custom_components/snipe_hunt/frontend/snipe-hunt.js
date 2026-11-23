@@ -2789,6 +2789,7 @@ const PANELS = {
     }).join('') : empty('No losses on record.')) + `</div>`;
   }],
 
+  brain: ['Ask the brain', false, () => '<snipe-hunt-brain></snipe-hunt-brain>'],
   wall: ['The Walker Wall', false, c => {
     const w = wallFetch(c);
     if (w.error) {
@@ -3671,6 +3672,220 @@ async function paintBrag(canvas, d, span) {
 }
 
 // --------------------------------------------------------------------- card
+// ---- The brain: a chat with the bot about the collection, card photos welcome
+// (the bot's src/brain.py). The element keeps its own DOM: the card's redraws
+// leave it alone because the panel's HTML never changes.
+const BRAIN_STARTERS = ['Do I have these?', 'Fair price? What should I pay?', 'Where does this go in my binder?',
+  'Is this binder page in the right order?', 'What should I hunt for this week?'];
+const BRAIN_GRADE = {owned: ['OWNED', 'in your PC'], maybe: ['MAYBE', 'check it'], upgrade: ['UPGRADE', 'own it raw'],
+  check: ['CHECK', 'flip it'], new: ['NEW', 'not in your PC'], other: ['OTHER', 'not Walker']};
+const BRAIN_CSS = `
+  snipe-hunt-brain [hidden] { display: none !important; }
+  .br { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 2px; }
+  .br-log { max-height: 62vh; min-height: 180px; overflow-y: auto; padding: 4px 2px; }
+  .br-empty { text-align: center; color: var(--secondary-text-color); padding: 28px 10px; }
+  .br-empty b { display: block; font-size: 20px; color: var(--primary-text-color); margin-bottom: 6px; }
+  .br-msg { display: flex; flex-direction: column; margin: 0 0 12px; max-width: 46em; }
+  .br-msg.you { align-items: flex-end; margin-left: auto; }
+  .br-bub { padding: 9px 13px; border-radius: 16px; max-width: 92%; overflow-wrap: anywhere; line-height: 1.45; }
+  .you .br-bub { background: #0c2340; color: #fff; border-bottom-right-radius: 5px; }
+  .brn .br-bub { background: var(--secondary-background-color, #f4f6f8); border-bottom-left-radius: 5px; }
+  .br-bub p { margin: 0 0 .5em; } .br-bub p:last-child { margin: 0; } .br-bub ul { margin: .2em 0 .5em; padding-left: 1.2em; }
+  .br-th { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 5px; }
+  .br-th img { width: 64px; height: 82px; object-fit: cover; border-radius: 7px; }
+  .br-when { font-size: 11.5px; color: var(--secondary-text-color); margin: 3px 6px 0; }
+  .br-slabs { display: grid; gap: 7px; margin-bottom: 7px; width: 100%; max-width: 46em; }
+  .br-slab { background: #fff; color: #0c2340; border: 1.5px solid #b9c4d2; border-radius: 9px; overflow: hidden;
+    display: grid; grid-template-columns: 1fr auto; }
+  .br-band { grid-column: 1 / -1; height: 6px; background: #c41e3a; }
+  .br-slab.v-owned .br-band { background: #17703f; }
+  .br-what { padding: 7px 10px 8px 11px; min-width: 0; }
+  .br-name { font-weight: 650; font-size: 14px; line-height: 1.25; }
+  .br-meta { font-size: 12.5px; color: #52627a; margin-top: 2px; }
+  .br-grade { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5px 11px;
+    border-left: 1.5px dashed #c9d2dd; min-width: 78px; text-align: center; }
+  .br-grade b { font: 800 17px/1 ui-rounded, system-ui, sans-serif; letter-spacing: .3px; }
+  .br-grade span { font-size: 11.5px; color: #52627a; margin-top: 3px; }
+  .v-owned .br-grade b { color: #17703f; } .v-maybe .br-grade b, .v-upgrade .br-grade b, .v-check .br-grade b { color: #a26200; }
+  .v-new .br-grade b { color: #1d58b8; } .v-other .br-grade b { color: #52627a; font-size: 14px; }
+  .br-dots { display: inline-flex; gap: 4px; margin-right: 8px; vertical-align: middle; }
+  .br-dots i { width: 7px; height: 7px; border-radius: 50%; background: #c41e3a; animation: brhop 1s infinite ease-in-out; }
+  .br-dots i:nth-child(2) { animation-delay: .15s; } .br-dots i:nth-child(3) { animation-delay: .3s; }
+  @keyframes brhop { 0%, 80%, 100% { transform: translateY(0); opacity: .45 } 40% { transform: translateY(-5px); opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .br-dots i { animation: none; } }
+  .br-start { display: flex; gap: 7px; flex-wrap: wrap; }
+  .br-start button, .br-top button { border: 1px solid var(--divider-color); background: none; color: var(--primary-text-color);
+    border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13.5px; cursor: pointer; }
+  .br-top { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+  .br-top .grow { flex: 1; font-size: 12.5px; color: var(--secondary-text-color); }
+  .br-picked { display: flex; gap: 7px; flex-wrap: wrap; }
+  .br-picked div { position: relative; } .br-picked img { width: 54px; height: 68px; object-fit: cover; border-radius: 7px; display: block; }
+  .br-picked button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 0;
+    background: #0c2340; color: #fff; font-size: 12px; padding: 0; cursor: pointer; }
+  .br-row { display: flex; gap: 8px; align-items: flex-end; }
+  .br-row textarea { flex: 1; resize: none; min-height: 42px; max-height: 140px; border-radius: 12px; padding: 10px 12px;
+    border: 1px solid var(--divider-color); background: var(--card-background-color); color: var(--primary-text-color); font: inherit; }
+  .br-cam, .br-send { height: 42px; border-radius: 11px; border: 0; cursor: pointer; font: inherit; font-weight: 600; }
+  .br-cam { width: 46px; display: grid; place-items: center; background: var(--secondary-background-color, #eef2f6); color: var(--primary-text-color); font-size: 19px; }
+  .br-send { padding: 0 16px; background: #c41e3a; color: #fff; } .br-send:disabled { opacity: .45; cursor: default; }
+  .br-err { color: #c41e3a; font-size: 13px; } .br-err:empty { display: none; }
+  .br-list { border: 1px solid var(--divider-color); border-radius: 10px; max-height: 260px; overflow-y: auto; }
+  .br-list div { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid var(--divider-color); cursor: pointer; }
+  .br-list div span { flex: 1; } .br-list small { color: var(--secondary-text-color); }`;
+const brainMd = text => {   // escape first, then bold, italics, bullets, paragraphs
+  const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|\W)\*(?!\s)(.+?)\*(?=\W|$)/g, '$1<i>$2</i>');
+  const out = []; let list = null;
+  for (const raw of String(text || '').split('\n')) {
+    const li = raw.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+    if (li) { (list = list || []).push(`<li>${inline(li[1])}</li>`); continue; }
+    if (list) { out.push(`<ul>${list.join('')}</ul>`); list = null; }
+    if (raw.trim()) out.push(`<p>${inline(raw.replace(/^#+\s*/, ''))}</p>`);
+  }
+  if (list) out.push(`<ul>${list.join('')}</ul>`);
+  return out.join('');
+};
+const brainSlab = c => {
+  const [g, sub] = BRAIN_GRADE[c.verdict] || BRAIN_GRADE.other;
+  const meta = [];
+  if (c.value != null) meta.push(`worth ~$${Number(c.value).toFixed(2)}`);
+  if (c.where) meta.push(esc(c.where));
+  if (c.sure === 'low') meta.push('hard to read');
+  return `<div class="br-slab v-${esc(c.verdict)}"><div class="br-band"></div><div class="br-what"><div class="br-name">${esc(c.read || 'Card')}</div>
+    <div class="br-meta">${esc(c.label || '')}${meta.length ? '<br>' + meta.join(', ') : ''}</div></div>
+    <div class="br-grade"><b>${g}</b><span>${c.ids && c.ids.length ? '#' + c.ids.map(esc).join(', #') : sub}</span></div></div>`;
+};
+
+class SnipeHuntBrain extends HTMLElement {
+  set card(card) {
+    const first = !this._card;
+    this._card = card;
+    if (first) this.init();
+  }
+
+  init() {
+    this.photos = []; this.busy = false;
+    this.key = 'ws_brain_chat:' + ((this._card.feed && this._card.feed.entry) || '');
+    this.chatId = localStorage.getItem(this.key) || '';
+    this.innerHTML = `<style>${BRAIN_CSS}</style><div class="br">
+      <div class="br-top"><span class="grow" data-b="hint">Ask about your cards, prices, snipes and binder. Photos welcome.</span>
+        <button type="button" data-b="hist">Chats</button><button type="button" data-b="new">New chat</button></div>
+      <div class="br-list" data-b="list" hidden></div>
+      <div class="br-log" data-b="log"></div>
+      <div class="br-start" data-b="start">${BRAIN_STARTERS.map(s => `<button type="button" data-b="starter">${esc(s)}</button>`).join('')}</div>
+      <div class="br-err" data-b="err" role="alert"></div>
+      <div class="br-picked" data-b="picked"></div>
+      <div class="br-row"><button class="br-cam" type="button" data-b="cam" aria-label="Add photos"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
+        <input type="file" accept="image/*" multiple hidden data-b="file">
+        <textarea rows="1" data-b="q" placeholder="Ask the brain anything about your collection"></textarea>
+        <button class="br-send" type="button" data-b="send">Ask</button></div></div>`;
+    const $ = n => this.querySelector(`[data-b="${n}"]`);
+    this.$ = $;
+    this.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-b]');
+      if (!b) return;
+      const what = b.dataset.b;
+      if (what === 'send') this.send();
+      else if (what === 'cam') $('file').click();
+      else if (what === 'new') { clearTimeout(this.poll); this.busy = false; this.load(''); $('q').focus(); }
+      else if (what === 'hist') this.history();
+      else if (what === 'starter') { $('q').value = b.textContent; this.grow(); $('q').focus(); }
+      else if (what === 'rm') { this.photos.splice(+b.dataset.i, 1); this.drawPicked(); }
+      else if (what === 'open') { $('list').hidden = true; this.load(b.dataset.id); }
+      else if (what === 'del') { ev.stopPropagation(); this.ws('delete', {chat_id: b.dataset.id}).then(() => { if (b.dataset.id === this.chatId) this.load(''); this.history(); }).catch(() => {}); }
+    });
+    $('file').addEventListener('change', async ev => {
+      const files = [...ev.target.files].slice(0, 4 - this.photos.length);   // Home Assistant's socket: four at a time
+      $('err').textContent = files.length < ev.target.files.length ? 'Up to 4 photos per message here (6 on the phone page).' : '';
+      for (const f of files) { try { this.photos.push(await shrinkPhoto(f)); } catch (e) { $('err').textContent = e.message; } }
+      ev.target.value = ''; this.drawPicked();
+    });
+    $('q').addEventListener('input', () => this.grow());
+    $('q').addEventListener('keydown', ev => { if (ev.key === 'Enter' && !ev.shiftKey && !matchMedia('(pointer: coarse)').matches) { ev.preventDefault(); this.send(); } });
+    this.load(this.chatId);
+  }
+
+  disconnectedCallback() { clearTimeout(this.poll); }
+
+  ws(op, data) {
+    const c = this._card;
+    if (!c || !c._hass) return Promise.reject(new Error('Not connected to Home Assistant yet'));
+    return c._hass.callWS({type: DOMAIN + '/brain', op, ...data, ...c.who()}).then(res => {
+      if (res && res.page) this.$('hint').innerHTML = `Ask about your cards, prices, snipes and binder. At a card show, use <a href="${esc(res.page)}">the phone page</a> (over Tailscale).`;
+      return res;
+    });
+  }
+
+  grow() { const q = this.$('q'); q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; }
+
+  drawPicked() {
+    this.$('picked').innerHTML = this.photos.map((p, i) => `<div><img alt="Photo ${i + 1}" src="data:image/jpeg;base64,${p}"><button type="button" data-b="rm" data-i="${i}" aria-label="Remove photo ${i + 1}">✕</button></div>`).join('');
+  }
+
+  async history() {
+    const list = this.$('list');
+    if (!list.hidden) { list.hidden = true; return; }
+    list.hidden = false; list.innerHTML = '<div>Loading…</div>';
+    try {
+      const {chats} = await this.ws('chats', {});
+      list.innerHTML = chats.length ? chats.map(c => `<div data-b="open" data-id="${esc(c.id)}"><span>${esc(c.title)}<br><small>${esc(new Date(c.updated).toLocaleString([], {month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}))}</small></span><button type="button" data-b="del" data-id="${esc(c.id)}">Delete</button></div>`).join('') : '<div>No chats yet.</div>';
+    } catch (e) { list.innerHTML = `<div>${esc(e.message)}</div>`; }
+  }
+
+  async load(id) {
+    clearTimeout(this.poll);
+    this.chatId = id || '';
+    localStorage.setItem(this.key, this.chatId);
+    if (!id) return this.render(null);
+    try { const c = await this.ws('chat', {chat_id: id}); this.render(c); this.watch(c); }
+    catch (e) { this.chatId = ''; localStorage.removeItem(this.key); this.render(null); }
+  }
+
+  watch(c) {
+    const last = c.turns[c.turns.length - 1];
+    this.busy = !!last && (last.status === 'reading' || last.status === 'thinking');
+    this.$('send').disabled = this.busy;
+    if (this.busy) this.poll = setTimeout(() => this.load(c.id), 1500);
+  }
+
+  render(chat) {
+    const turns = chat ? chat.turns : [];
+    this.$('start').hidden = turns.length > 0;
+    const log = this.$('log');
+    if (!turns.length) {
+      log.innerHTML = '<div class="br-empty"><b>Snap it, ask it.</b>Add a photo of a card, a stack or a binder page, or just ask. The brain checks your real inventory, prices, snipes and binder before it answers.</div>';
+      return;
+    }
+    const when = iso => iso ? new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
+    log.innerHTML = turns.map(t => {
+      if (t.role === 'you') {
+        const th = (t.thumbs || []).map(b => `<img alt="" src="data:image/jpeg;base64,${b}">`).join('');
+        return `<div class="br-msg you">${th ? `<div class="br-th">${th}</div>` : ''}${t.text ? `<div class="br-bub">${esc(t.text)}</div>` : ''}<div class="br-when">${when(t.at)}</div></div>`;
+      }
+      const live = t.status === 'reading' || t.status === 'thinking';
+      const slabs = (t.cards || []).length ? `<div class="br-slabs">${t.cards.map(brainSlab).join('')}</div>` : '';
+      const body = live ? `<span class="br-dots"><i></i><i></i><i></i></span>${t.status === 'reading' ? 'Reading your cards…' : 'Checking your collection, prices and binder…'}` : brainMd(t.text);
+      return `<div class="br-msg brn">${slabs}<div class="br-bub">${body}</div>${live ? '' : `<div class="br-when">${when(t.done_at || t.at)}</div>`}</div>`;
+    }).join('');
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async send() {
+    const q = this.$('q'), text = q.value.trim();
+    if (this.busy || (!text && !this.photos.length)) return;
+    this.$('err').textContent = ''; this.busy = true; this.$('send').disabled = true;
+    try {
+      const c = await this.ws('send', {text, images: this.photos, chat_id: this.chatId || null});
+      q.value = ''; this.photos = []; this.drawPicked(); this.grow();
+      this.chatId = c.id; localStorage.setItem(this.key, c.id);
+      this.render(c); this.watch(c);
+    } catch (e) {
+      this.busy = false; this.$('send').disabled = false;
+      this.$('err').textContent = /unknown command|not found/i.test(e.message || '') ? 'The brain needs a newer bot and integration: update both, then try again.' : (e.message || 'That did not send');
+    }
+  }
+}
+if (!customElements.get('snipe-hunt-brain')) customElements.define('snipe-hunt-brain', SnipeHuntBrain);
+
 class SnipeHuntCard extends HTMLElement {
   constructor() {
     super();
@@ -3789,6 +4004,8 @@ class SnipeHuntCard extends HTMLElement {
     if (out === this._html && this.body.firstChild) return;   // nothing changed: leave the DOM be
     this._html = out;
     this.body.innerHTML = out;
+    const brain = this.body.querySelector('snipe-hunt-brain');
+    if (brain) brain.card = this;   // it keeps its own chat from here (redraws leave it be)
     // a wall tile whose picture is gone shows its colour and year instead
     this.body.querySelectorAll('.wt img').forEach(img => img.addEventListener('error', () => {
       const t = img.parentNode; img.remove(); if (t) t.classList.add('ph');
@@ -4027,6 +4244,9 @@ class SnipeHuntStrategy {
         section(heading('Want list', 'mdi:puzzle', id('sensor', 'want_list')), panel('wantlist')),
         {...section(heading('The Walker Wall', 'mdi:view-comfy'), panel('wall')), column_span: 3},
       ]},
+      brain: {title: 'Brain', path: 'brain', icon: 'mdi:brain', sections: [
+        {...section(heading('Ask the brain', 'mdi:brain'), panel('brain')), column_span: 3},
+      ]},
       slabs: {title: 'Slabs', path: 'slabs', icon: 'mdi:medal', sections: [
         {...section(heading('Slab Hunter', 'mdi:medal'), panel('slab_hunt')), column_span: 3},
       ]},
@@ -4081,6 +4301,7 @@ class SnipeHuntStrategy {
     if (!upgraded.includes('trophies')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'trophies');
     if (!upgraded.includes('pages')) upgraded.splice(upgraded.includes('binder') ? upgraded.indexOf('binder') + 1 : upgraded.length, 0, 'pages');
     if (!upgraded.includes('slabs')) upgraded.splice(upgraded.includes('collection') ? upgraded.indexOf('collection') + 1 : upgraded.length, 0, 'slabs');
+    if (!upgraded.includes('brain')) upgraded.splice(Math.min(1, upgraded.length), 0, 'brain');
     const tabs = upgraded.filter(t => VIEWS[t]);
     return {
       title: config.title || botName,

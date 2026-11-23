@@ -45,6 +45,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_action)
     websocket_api.async_register_command(hass, ws_photo)
     websocket_api.async_register_command(hass, ws_wall)
+    websocket_api.async_register_command(hass, ws_brain)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "snipe_hunt/subscribe", ENTRY: str})
@@ -128,3 +129,23 @@ async def ws_wall(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
         connection.send_error(msg["id"], "wall_failed", str(err))
         return
     connection.send_result(msg["id"], wall)
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "snipe_hunt/brain",
+    vol.Required("op"): vol.In(["send", "chat", "chats", "delete"]),
+    vol.Optional("chat_id"): vol.Any(str, None),
+    vol.Optional("text"): str,
+    vol.Optional("images"): [str],   # base64 JPEGs, already shrunk in the browser
+    ENTRY: str,
+})
+@websocket_api.async_response
+async def ws_brain(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """A chat with the bot's brain. It only talks: nothing here can bid, buy or change a snipe."""
+    data = {k: msg[k] for k in ("chat_id", "text", "images") if k in msg}
+    try:
+        result = await get_coordinator(hass, msg.get("entry")).async_brain(msg["op"], data)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "brain_failed", str(err))
+        return
+    connection.send_result(msg["id"], result)
