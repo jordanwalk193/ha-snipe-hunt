@@ -139,9 +139,10 @@ async def ws_wall(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     vol.Optional("images"): [str],   # base64 JPEGs, already shrunk in the browser
     ENTRY: str,
 })
+@websocket_api.require_admin   # the first command that spends money (Claude): admins only
 @websocket_api.async_response
 async def ws_brain(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    """A chat with the bot's brain. It only talks: nothing here can bid, buy or change a snipe."""
+    """A chat with the bot's brain (admins). It only talks: nothing here can bid, buy or change a snipe."""
     data = {k: msg[k] for k in ("chat_id", "text", "images") if k in msg}
     try:
         result = await get_coordinator(hass, msg.get("entry")).async_brain(msg["op"], data)
