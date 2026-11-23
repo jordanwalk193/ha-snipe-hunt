@@ -195,9 +195,6 @@
       },
       "extra_searches": {
         "default": "mdi:text-search"
-      },
-      "combined_ship_sellers": {
-        "default": "mdi:package-variant-closed-plus"
       }
     },
     "calendar": {

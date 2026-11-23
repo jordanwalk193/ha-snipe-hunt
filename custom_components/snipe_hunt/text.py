@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import SnipeHuntConfigEntry
 from .entity import SnipeHuntSettingEntity
 
-TEXTS = ("sellers", "extra_searches", "combined_ship_sellers")
+TEXTS = ("sellers", "extra_searches")   # combined_ship_sellers retired by the bot (sellers.toml)
 
 
 async def async_setup_entry(

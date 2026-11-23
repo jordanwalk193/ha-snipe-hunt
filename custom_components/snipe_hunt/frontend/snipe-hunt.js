@@ -660,17 +660,17 @@ const pickPhoto = () => new Promise(ok => {
   inp.onchange = () => ok(inp.files && inp.files[0]);
   inp.click();
 });
-const shrinkPhoto = file => new Promise((ok, bad) => {
-  const url = URL.createObjectURL(file), img = new Image();
+const shrinkPhoto = (file, side = 1600) => new Promise((ok, bad) => {
+  const url = typeof file === 'string' ? 'data:image/jpeg;base64,' + file : URL.createObjectURL(file), img = new Image();
   img.onload = () => {   // the browser has already turned it upright from its EXIF note
-    const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const k = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
     const cv = document.createElement('canvas');
     cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k);
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
-    URL.revokeObjectURL(url);
+    if (typeof file !== 'string') URL.revokeObjectURL(url);
     ok(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
   };
-  img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("That photo couldn't be read")); };
+  img.onerror = () => { if (typeof file !== 'string') URL.revokeObjectURL(url); bad(new Error("That photo couldn't be read")); };
   img.src = url;
 });
 const cornerWords = k => {
@@ -1164,28 +1164,39 @@ const lineChart = (c, pts, {color, fmt = v => String(Math.round(v)), ref = null,
 const clockTime = iso => new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 const dayWord = iso => { const d = new Date(iso); return d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], {weekday: 'short'}); };
 
-// ---- Binder pages (the bot's binder_pages): sections of 3x3 pages, pocket by pocket ----
+// ---- Binder pages (the bot's binder_pages): sections of 3x3 (or 4x4...) pages, pocket by pocket ----
+const BP_COLS = {4: 2, 9: 3, 12: 4, 16: 4, 20: 4};   // pockets a page -> pockets across (binder.toml `pockets`)
+const bpSize = b => (b && BP_COLS[b.pockets]) ? b.pockets : 9;
+// Page size switch: the bot re-flows every card into the new pages (keeps their order).
+const pocketSwitch = b => {
+  const n = bpSize(b);
+  return `<div class="row tight" style="align-items:center;margin:6px 0 2px;font-size:12px"><span class="muted">Page size:</span>` +
+    [9, 16, 12, 20, 4].map(k => k === n
+      ? `<span class="btn on" title="Your binder now">${k}-pocket</span>`
+      : act(`${k}-pocket`, {action: 'binder_pockets', pockets: k},
+        {confirm: `Tap again: every card moves into ${k}-pocket pages, in the order it sits now`, busy: 'Re-flowing…'})).join('') + `</div>`;
+};
 const spotTxt = (sp, titles, same) => !sp ? 'not in the binder'
   : (same === sp[0] ? '' : (titles[sp[0]] || sp[0]) + ' ') + 'p' + sp[1] + ' #' + sp[2];
-const pagesFrom = (layout, key) => {
+const pagesFrom = (layout, key, n = 9) => {
   const g = [];
   Object.entries(layout).forEach(([id, sp]) => { if (sp[0] !== key) return;
-    while (g.length < sp[1]) g.push(Array(9).fill(null));
+    while (g.length < sp[1]) g.push(Array(n).fill(null));
     g[sp[1] - 1][sp[2] - 1] = id; });
   return g;
 };
 const trimPages = g => { let n = g.length; while (n > 1 && !g[n - 1].some(Boolean)) n--; return g.slice(0, n); };
-const sectionHead = (s, counts) => {
+const sectionHead = (s, counts, n = 9) => {
   const end = s.start + s.pages - 1;
   const chipsHtml = !counts ? '' : [
     s.over ? pill(`over by ${s.over}`, '#e53935') : (s.full ? pill('full', '#e53935') : (s.nearly_full ? pill(`${s.free} pockets left`, '#fb8c00') : '')),
   ].join('');
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:16px;flex-wrap:wrap">
     <b style="font-size:15px">${esc(s.title)}</b>
-    <span class="muted" style="font-size:12px">${counts ? s.used + ' of ' + s.pages * 9 + ' pockets · ' : ''}${s.pages === 1 ? 'binder page ' + s.start : 'binder pages ' + s.start + '–' + end} ${chipsHtml}</span></div>`;
+    <span class="muted" style="font-size:12px">${counts ? s.used + ' of ' + s.pages * n + ' pockets · ' : ''}${s.pages === 1 ? 'binder page ' + s.start : 'binder pages ' + s.start + '–' + end} ${chipsHtml}</span></div>`;
 };
 const pageGrids = (c, s, g, hot = new Set()) => `<div class="bp-pages">` + g.map((page, pi) =>
-  `<div class="bp-page"><div class="bp-label">${pi === 0 && s.key !== 'front' ? '⭐ ' : ''}p${pi + 1}${pi === 0 && s.key !== 'front' ? ' · showcase' : ''}${pi + 1 > s.pages ? ' · over' : ''}</div><div class="bp-grid">` +
+  `<div class="bp-page${(BP_COLS[page.length] || 3) > 3 ? ' wide' : ''}"><div class="bp-label">${pi === 0 && s.key !== 'front' ? '⭐ ' : ''}p${pi + 1}${pi === 0 && s.key !== 'front' ? ' · showcase' : ''}${pi + 1 > s.pages ? ' · over' : ''}</div><div class="bp-grid" style="grid-template-columns:repeat(${BP_COLS[page.length] || 3},1fr)">` +
   page.map((id, ki) => {
     const isHot = !id && hot.has([s.key, pi + 1, ki + 1].join('|'));   // an empty pocket a waiting card goes into
     if (!id) return `<div class="bp-pk empty${isHot ? ' hot' : ''}"></div>`;
@@ -2851,11 +2862,11 @@ const PANELS = {
     const titles = Object.fromEntries((b.sections || []).map(s => [s.key, s.title]));
     if (b.setup) {
       const layout = b.setup_layout || {};
-      const secs = (b.sections || []).map(s => [s, pagesFrom(layout, s.key)]).filter(([, g]) => g.length);
+      const secs = (b.sections || []).map(s => [s, pagesFrom(layout, s.key, bpSize(b))]).filter(([, g]) => g.length);
       return `<div class="muted" style="font-size:13px;padding:10px 0 4px">🗂️ <b>Set up your binder.</b> This is the new layout for the
         ${Object.keys(layout).length} cards already in it: the best card of each section first, page by page, pocket by pocket
         (left to right, top to bottom). Move the cards to match, then tap Done. Filing new cards starts after that.</div>` +
-        `<div class="bp-secs">` + secs.map(([s, g]) => `<div class="bp-sec">` + sectionHead(s, false) + pageGrids(c, s, g) + `</div>`).join('') + `</div>` +
+        pocketSwitch(b) + `<div class="bp-secs">` + secs.map(([s, g]) => `<div class="bp-sec">` + sectionHead(s, false) + pageGrids(c, s, g) + `</div>`).join('') + `</div>` +
         `<div class="row" style="margin-top:14px">${act('✅ Done, my binder looks like this', {action: 'binder_setup', layout},
           {color: '#43a047', confirm: 'Tap again to save this layout', busy: 'Saving…'})}</div>`;
     }
@@ -2885,9 +2896,9 @@ const PANELS = {
            <div class="row">${act('✅ Done, re-sorted', {action: 'binder_resort', section: s.key, layout, expect}, {color: '#43a047', busy: 'Saving…'})}${setBtn('Cancel', 'resort_open', '')}</div>`
         : (s.blocked ? `<div class="muted" style="font-size:11px;padding:4px 0">↕️ Re-sort after this section's move it / take it out cards are done.</div>`
           : `<div class="row">${setBtn(s.resort_suggested ? '↕️ Re-sort (suggested)' : '↕️ Re-sort', 'resort_open', s.key, s.resort_suggested ? '#fb8c00' : null)}</div>`);
-      return `<div class="bp-sec">` + sectionHead(s, true) + tools + pageGrids(c, s, g, resorting ? new Set() : hot) + `</div>`;
+      return `<div class="bp-sec">` + sectionHead(s, true, bpSize(b)) + tools + pageGrids(c, s, g, resorting ? new Set() : hot) + `</div>`;
     }).join('');
-    return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
+    return `<div style="padding-top:6px">` + toFile + later + cap('THE BINDER') + pocketSwitch(b) + (sections ? `<div class="bp-secs">${sections}</div>` : empty('No cards have a pocket yet.')) + `</div>`;
   }],
 
   to_file: ['To file in the binder', false, c => {
@@ -3526,7 +3537,8 @@ const STYLE = `
   @media (prefers-reduced-motion: reduce) { svg.map .dot.jp circle:last-child { animation: none; } }
   input[data-search] { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--divider-color);
          background: var(--card-background-color); color: var(--primary-text-color); font-size: 14px; }
-  /* Binder pages: each page a 3x3 sheet of pockets */
+  /* Binder pages: each page a 3x3 (or 4x4...) sheet of pockets */
+  .bp-page.wide, .bp-sec .bp-page.wide { flex-basis: 260px; max-width: 320px; }
   .bp-pages { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .bp-page { flex: 1 1 170px; max-width: 240px; min-width: 0; }
   .bp-label { font-size: 11px; font-weight: 700; color: var(--secondary-text-color); margin-bottom: 3px; }
@@ -3694,6 +3706,14 @@ const BRAIN_CSS = `
   .br-th { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-bottom: 5px; }
   .br-th img { width: 64px; height: 82px; object-fit: cover; border-radius: 7px; }
   .br-when { font-size: 11.5px; color: var(--secondary-text-color); margin: 3px 6px 0; }
+  .br-acts { display: grid; gap: 7px; margin-top: 7px; width: 100%; max-width: 46em; }
+  .br-act { text-align: left; font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--primary-text-color); background: var(--card-background-color, #fff);
+    border: 1.5px solid var(--primary-text-color); border-radius: 11px; padding: 9px 12px; cursor: pointer; display: flex; gap: 9px; align-items: center; }
+  .br-act::before { content: "＋"; font-weight: 800; color: #c41e3a; }
+  .br-act[disabled] { opacity: .65; cursor: default; }
+  .br-act.done { border-color: #17703f; } .br-act.done::before { content: "✓"; color: #17703f; }
+  .br-act.failed { border-color: #c41e3a; } .br-act.failed::before { content: "↻"; }
+  .br-act small { display: block; font-weight: 400; color: var(--secondary-text-color); font-size: 12px; margin-top: 2px; }
   .br-slabs { display: grid; gap: 7px; margin-bottom: 7px; width: 100%; max-width: 46em; }
   .br-slab { background: #fff; color: #0c2340; border: 1.5px solid #b9c4d2; border-radius: 9px; overflow: hidden;
     display: grid; grid-template-columns: 1fr auto; }
@@ -3744,14 +3764,24 @@ const brainMd = text => {   // escape first, then bold, italics, bullets, paragr
   if (list) out.push(`<ul>${list.join('')}</ul>`);
   return out.join('');
 };
+const BRAIN_SIDE = 2600, BRAIN_WS_BYTES = 3.3e6;   // Home Assistant's socket takes about 4 MB a message
+const fitPhotos = async photos => {
+  let side = BRAIN_SIDE, out = photos;
+  while (out.reduce((n, p) => n + p.length, 0) > BRAIN_WS_BYTES && side > 1000) {
+    side = Math.round(side * 0.8);
+    out = await Promise.all(photos.map(p => shrinkPhoto(p, side)));
+  }
+  return out;
+};
 const brainSlab = c => {
   const [g, sub] = BRAIN_GRADE[c.verdict] || BRAIN_GRADE.other;
   const meta = [];
   if (c.value != null) meta.push(`worth ~$${Number(c.value).toFixed(2)}`);
   if (c.where) meta.push(esc(c.where));
-  if (c.sure === 'low') meta.push('hard to read');
+  if (c.sure === 'low' && c.by !== 'brain') meta.push('hard to read');
+  if (c.by === 'brain') meta.push('<b style="color:#17703f;font-size:11px">MATCHED FROM THE PHOTO</b>');
   return `<div class="br-slab v-${esc(c.verdict)}"><div class="br-band"></div><div class="br-what"><div class="br-name">${esc(c.read || 'Card')}</div>
-    <div class="br-meta">${esc(c.label || '')}${meta.length ? '<br>' + meta.join(', ') : ''}</div></div>
+    <div class="br-meta">${esc(c.label || '')}${meta.length ? '<br>' + meta.join(' · ') : ''}</div></div>
     <div class="br-grade"><b>${g}</b><span>${c.ids && c.ids.length ? '#' + c.ids.map(esc).join(', #') : sub}</span></div></div>`;
 };
 
@@ -3791,12 +3821,14 @@ class SnipeHuntBrain extends HTMLElement {
       else if (what === 'starter') { $('q').value = b.textContent; this.grow(); $('q').focus(); }
       else if (what === 'rm') { this.photos.splice(+b.dataset.i, 1); this.drawPicked(); }
       else if (what === 'open') { $('list').hidden = true; this.load(b.dataset.id); }
+      else if (what === 'act' && !b.disabled) this.act(b);
       else if (what === 'del') { ev.stopPropagation(); this.ws('delete', {chat_id: b.dataset.id}).then(() => { if (b.dataset.id === this.chatId) this.load(''); this.history(); }).catch(() => {}); }
     });
     $('file').addEventListener('change', async ev => {
       const files = [...ev.target.files].slice(0, 4 - this.photos.length);   // Home Assistant's socket: four at a time
       $('err').textContent = files.length < ev.target.files.length ? 'Up to 4 photos per message here (6 on the phone page).' : '';
-      for (const f of files) { try { this.photos.push(await shrinkPhoto(f)); } catch (e) { $('err').textContent = e.message; } }
+      // big enough for the bot to zoom into a 16-card page; trimmed at send time if the batch is too big
+      for (const f of files) { try { this.photos.push(await shrinkPhoto(f, BRAIN_SIDE)); } catch (e) { $('err').textContent = e.message; } }
       ev.target.value = ''; this.drawPicked();
     });
     $('q').addEventListener('input', () => this.grow());
@@ -3856,7 +3888,7 @@ class SnipeHuntBrain extends HTMLElement {
       return;
     }
     const when = iso => iso ? new Date(iso).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) : '';
-    log.innerHTML = turns.map(t => {
+    log.innerHTML = turns.map((t, i) => {
       if (t.role === 'you') {
         const th = (t.thumbs || []).map(b => `<img alt="" src="data:image/jpeg;base64,${b}">`).join('');
         return `<div class="br-msg you">${th ? `<div class="br-th">${th}</div>` : ''}${t.text ? `<div class="br-bub">${esc(t.text)}</div>` : ''}<div class="br-when">${when(t.at)}</div></div>`;
@@ -3864,9 +3896,20 @@ class SnipeHuntBrain extends HTMLElement {
       const live = t.status === 'reading' || t.status === 'thinking';
       const slabs = (t.cards || []).length ? `<div class="br-slabs">${t.cards.map(brainSlab).join('')}</div>` : '';
       const body = live ? `<span class="br-dots"><i></i><i></i><i></i></span>${t.status === 'reading' ? 'Reading your cards…' : 'Checking your collection, prices and binder…'}` : brainMd(t.text);
-      return `<div class="br-msg brn">${slabs}<div class="br-bub">${body}</div>${live ? '' : `<div class="br-when">${when(t.done_at || t.at)}</div>`}</div>`;
+      const acts = (t.actions || []).length ? `<div class="br-acts">${t.actions.map(a => {
+        const st = a.state || 'offered';
+        const note = st === 'done' || st === 'failed' ? esc(a.message || '') : st === 'running' ? 'Working…' : 'Tap to do it';
+        return `<button type="button" class="br-act ${esc(st)}" data-b="act" data-turn="${i}" data-k="${Number(a.k)}"${st === 'done' || st === 'running' ? ' disabled' : ''}><span>${esc(a.label)}<small>${note}</small></span></button>`;
+      }).join('')}</div>` : '';
+      return `<div class="br-msg brn">${slabs}<div class="br-bub">${body}</div>${acts}${live ? '' : `<div class="br-when">${when(t.done_at || t.at)}</div>`}</div>`;
     }).join('');
     log.scrollTop = log.scrollHeight;
+  }
+
+  async act(b) {   // a change the brain offered: runs only on this tap (the bot checks it again)
+    b.disabled = true; b.querySelector('small').textContent = 'Working…';
+    try { this.render(await this.ws('act', {chat_id: this.chatId, turn: +b.dataset.turn, k: +b.dataset.k})); }
+    catch (e) { b.disabled = false; b.querySelector('small').textContent = /unknown command|not a valid value|extra keys/i.test(e.message || '') ? 'Needs the newer integration: update it, then try again.' : (e.message || 'That did not work'); }
   }
 
   async send() {
@@ -3874,7 +3917,7 @@ class SnipeHuntBrain extends HTMLElement {
     if (this.busy || (!text && !this.photos.length)) return;
     this.$('err').textContent = ''; this.busy = true; this.$('send').disabled = true;
     try {
-      const c = await this.ws('send', {text, images: this.photos, chat_id: this.chatId || null});
+      const c = await this.ws('send', {text, images: await fitPhotos(this.photos), chat_id: this.chatId || null});
       q.value = ''; this.photos = []; this.drawPicked(); this.grow();
       this.chatId = c.id; localStorage.setItem(this.key, c.id);
       this.render(c); this.watch(c);
