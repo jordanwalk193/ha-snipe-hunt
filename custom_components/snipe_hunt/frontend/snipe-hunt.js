@@ -2888,7 +2888,9 @@ const PANELS = {
       : empty('✅ Nothing to file: every card has its pocket.');
     const later = coming.length ? `<details style="margin-top:6px"><summary class="muted" style="font-size:12px;cursor:pointer">🚚 ${coming.length} on the way: where they'll go</summary>` +
       coming.map(e => fileRow(c, e, titles)).join('') + `</details>` : '';
-    const sections = (b.sections || []).filter(s => s.used || s.key === open).map(s => {
+    // every section that owns binder pages shows, empty or not, so the page order matches the
+    // physical binder (an empty Topps Now between Numbered and 2019 still holds pages 8-9)
+    const sections = (b.sections || []).filter(s => s.pages || s.used || s.key === open).map(s => {
       const resorting = open === s.key;
       const g = resorting ? s.resort : trimPages(s.grid);
       const expect = s.grid.flat().filter(Boolean);
