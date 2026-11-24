@@ -1197,11 +1197,32 @@ const sectionHead = (s, counts, n = 9) => {
 };
 // drag = the live binder (not a setup or re-sort preview): each pocket says where it is and
 // each card can be dragged to another pocket of its section (binder_move; SnipeHuntCard.drag*)
+// Topps Now is laid out in checklist order: a card he doesn't have yet keeps its pocket as a gray
+// ghost (binder.plan "ghosts"), picture and price from the Topps Now library. Tap = what it is.
+const tnNo = v => String(v || '').replace(/[#-]/g, '').toUpperCase();
+const tnLib = (c, g) => (c.d.topps_now || []).find(r => String(r.year) === String(g.year) && tnNo(r.no) === tnNo(g.no)) || {};
+const ghostPk = (c, g, hot, spot) => {
+  const lib = tnLib(c, g), key = g.year + '|' + g.no, sel = store('tn_ghost', '') === key;
+  const name = `#${esc(g.no)} '${esc(String(g.year).slice(2))}`;
+  const inner = lib.image ? `<img src="${esc(lib.image)}" loading="lazy" alt="">` : `<div class="bp-none">${name}</div>`;
+  return `<div class="bp-pk ghost${hot ? ' hot' : ''}${sel ? ' sel' : ''}"${spot} role="button" data-do="set" data-key="tn_ghost" data-value="${sel ? '' : esc(key)}"
+    title="${esc(g.year + ' Topps Now #' + g.no + (g.event && g.event !== 'unconfirmed' ? ': ' + g.event : '') + ' (not in your collection)')}">${inner}<span class="bp-tag">${name}</span></div>`;
+};
+const ghostInfo = (c, s) => {
+  const key = store('tn_ghost', ''), g = (s.ghosts || []).find(x => x.year + '|' + x.no === key);
+  if (!g) return '';
+  const lib = tnLib(c, g), ev = g.event && g.event !== 'unconfirmed' ? g.event : (lib.title || 'Event not confirmed yet');
+  const run = g.print_run && g.print_run !== 'unconfirmed' ? `<b>${esc(g.print_run)}</b> printed` : 'print run unconfirmed';
+  return `<div class="warn" style="margin-top:6px;padding:8px 10px;font-size:12px">⬜ <b>${esc(g.year)} Topps Now #${esc(g.no)}</b> · p${g.at[0]} #${g.at[1]}: ${esc(ev)}<br>
+    ${run}${lib.median != null ? ' · goes for about ' + money(lib.median) : ''}${lib.live != null ? ' · cheapest now ' + money(lib.live) : ''} · not in your collection yet</div>`;
+};
 const pageGrids = (c, s, g, hot = new Set(), drag = false) => `<div class="bp-pages">` + g.map((page, pi) =>
   `<div class="bp-page${(BP_COLS[page.length] || 3) > 3 ? ' wide' : ''}"><div class="bp-label">${pi === 0 && s.key !== 'front' ? '⭐ ' : ''}p${pi + 1}${pi === 0 && s.key !== 'front' ? ' · showcase' : ''}${pi + 1 > s.pages ? ' · over' : ''}</div><div class="bp-grid" style="grid-template-columns:repeat(${BP_COLS[page.length] || 3},1fr)">` +
   page.map((id, ki) => {
     const isHot = !id && hot.has([s.key, pi + 1, ki + 1].join('|'));   // an empty pocket a waiting card goes into
     const spot = drag ? ` data-spot="${esc(s.key)}|${pi + 1}|${ki + 1}"` : '';
+    const gh = !id && drag && (s.ghosts || []).find(x => x.at[0] === pi + 1 && x.at[1] === ki + 1);
+    if (gh) return ghostPk(c, gh, isHot, spot);
     if (!id) return `<div class="bp-pk empty${isHot ? ' hot' : ''}"${spot}></div>`;
     const x = c.art.get(String(id)) || {id, n: '#' + id, f: ''};
     const flip = (x.f || '').includes('D');
@@ -2896,7 +2917,9 @@ const PANELS = {
       const expect = s.grid.flat().filter(Boolean);
       const layout = {};
       s.resort.forEach((pg, pi) => pg.forEach((id, ki) => { if (id) layout[id] = [s.key, pi + 1, ki + 1]; }));
-      const tools = resorting && !s.blocked
+      const tools = s.checklist
+        ? `<div class="muted" style="font-size:11px;padding:4px 0">📋 In checklist order (toppsnow.md). Gray pockets are cards you don't have yet: tap one to see it.</div>` + ghostInfo(c, s)
+        : resorting && !s.blocked
         ? `<div class="warn" style="margin-top:6px;padding:8px 10px;font-size:12px">↕️ Re-sort ${esc(s.title)}: lay the pages out like this (best first), then tap Done.</div>
            <div class="row">${act('✅ Done, re-sorted', {action: 'binder_resort', section: s.key, layout, expect}, {color: '#43a047', busy: 'Saving…'})}${setBtn('Cancel', 'resort_open', '')}</div>`
         : (s.blocked ? `<div class="muted" style="font-size:11px;padding:4px 0">↕️ Re-sort after this section's move it / take it out cards are done.</div>`
@@ -3561,6 +3584,11 @@ const STYLE = `
   .bp-sec .bp-pages { flex-wrap: wrap; }
   .bp-sec .bp-page { flex: 0 1 220px; }
   .bp-pk.empty { border: 1px dashed #8887; background: transparent; }
+  .bp-pk.ghost { border: 1px dashed #8886; background: transparent; cursor: pointer; }
+  .bp-pk.ghost img { filter: grayscale(1); opacity: .3; }
+  .bp-pk.ghost .bp-none { opacity: .55; }
+  .bp-pk.ghost .bp-tag { background: #0007; }
+  .bp-pk.ghost.sel { outline: 2px solid #1e88e5; outline-offset: 1px; }
   .bp-pk.hot { box-shadow: 0 0 0 2px #43a047; }
   .bp-pk.flip img { filter: grayscale(.7) brightness(.85); }
   .bp-pk .bp-tag { position: absolute; left: 2px; bottom: 2px; font-size: 9px; font-weight: 800; color: #fff;
