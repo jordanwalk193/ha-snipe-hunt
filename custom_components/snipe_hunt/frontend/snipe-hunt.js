@@ -324,6 +324,13 @@ const winTxt = p => p.win == null ? '' : ` · <span title="Where auctions like t
 // What makes the card worth knowing (the bot's "story": set, parallel, print run, a
 // rookie year, an oddball release), one line a collector would tell a friend.
 const story = p => p.story ? `<div class="story">💡 ${esc(p.story)}</div>` : '';
+// The honest range around a sales-based value: where the middle half of cards like this
+// one really sold against the bot's value (the bot's nightly price check).
+const rangeTxt = p => {
+  const r = p.range;
+  if (!r || r.lo == null) return '';
+  return `<div class="muted" style="font-size:12px;margin-top:2px" title="Half of the last ${r.n} ${esc(r.of)} sold inside this share of the bot's value; a quarter sold for less, a quarter for more.">📏 Usually sells <b style="color:var(--primary-text-color)">${worth(r.lo)}–${worth(r.hi)}</b> <span>(${esc(r.of)})</span>${r.shaky ? ' ' + pill('shaky price', '#fb8c00') : ''}</div>`;
+};
 const lastSold = p => {
   // The trust strip: the newest real sales of the same card, each one tappable, so a
   // deal can be bought without opening anything else.
@@ -337,7 +344,7 @@ const lastSold = p => {
   const comps = (ls.recent || [{total: ls.total, at: ls.at}]).map(r => r.url
     ? `<a class="comp" href="${esc(r.url)}" target="_blank" rel="noopener">${money(r.total)} · ${day(r.at)}${r.kind === 'bin' ? ' BIN' : ''}</a>`
     : `<span class="comp">${money(r.total)} · ${day(r.at)}</span>`).join('');
-  return `<div style="font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center"><span class="muted">🔨 Sold${ls.estimated ? ' (shipping assumed)' : ''}:</span>${comps}${ls.n > (ls.recent || [1]).length ? `<span class="muted">· ${ls.n} on record</span>` : ''}</div>`;
+  return `<div style="font-size:12px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center"><span class="muted">🔨 Sold${ls.estimated ? ' (shipping assumed)' : ''}:</span>${comps}${ls.n > (ls.recent || [1]).length ? `<span class="muted">· ${ls.n} on record</span>` : ''}</div>` + rangeTxt(p);
 };
 // A graded card checked with its grader (the bot's slabs.py): the real grade and how many exist.
 const GRADER = {psa: 'PSA', beckett: 'BGS', sgc: 'SGC', cgc: 'CGC'};
@@ -2802,6 +2809,41 @@ const PANELS = {
     return c.need.length ? `<div style="padding-top:4px"></div>` + c.need.map(pickRow).join('') : empty(`✅ Every 🔥/🟢 auction ending in the next ${span(c.hours)} has a snipe.`);
   }],
 
+  got_away: ['The ones that got away', false, c => {
+    const g = c.d.got_away;
+    if (g === undefined) return empty('Update the bot to see this: it needs a version that takes your lost snipes apart.');
+    if (!g || !g.snipes) return empty('No finished snipes on record yet.');
+    const kinds = (g.kinds || []).map(k => {
+      const cl = k.close_pct == null ? null : Math.min(k.close_pct, 130), mx = k.max_pct == null ? null : Math.min(k.max_pct, 130);
+      return `<div class="line" style="padding:6px 0;font-size:13px">
+        <div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(k.label)}</b><span class="muted">lost ${k.lost} of ${k.snipes}${k.steals ? ` · <b style="color:#e53935">${k.steals} still steals</b>` : ''}</span></div>
+        ${cl != null && mx != null ? `<div style="position:relative;height:10px;border-radius:5px;background:var(--divider-color);margin:6px 0 2px">
+          <span style="position:absolute;left:0;top:0;bottom:0;width:${mx / 1.3}%;background:#8e24aa;border-radius:5px;opacity:.75"></span>
+          <span style="position:absolute;left:${cl / 1.3}%;top:-3px;bottom:-3px;width:3px;background:#e53935;border-radius:2px"></span>
+          <span style="position:absolute;left:${100 / 1.3}%;top:-2px;bottom:-2px;width:1px;background:currentColor;opacity:.35"></span></div>
+        <div class="muted" style="font-size:11px">your max sat at <b style="color:#8e24aa">${k.max_pct}%</b> of value · they closed at <b style="color:#e53935">${k.close_pct}%</b></div>` : ''}</div>`;
+    }).join('');
+    const list = (g.list || []).map(e => {
+      const pic = e.image ? `<img src="${esc(e.image)}" loading="lazy" alt="" style="width:40px;height:56px;object-fit:cover;border-radius:5px;display:block">` : '<div style="width:40px;height:56px;border-radius:5px;background:#8882"></div>';
+      return `<div class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px"><a href="https://www.ebay.com/itm/${esc(e.item_id)}" target="_blank" rel="noopener" style="flex:none">${pic}</a>
+        <span style="flex:1;min-width:0">${esc(e.title)}<br><span class="muted" style="font-size:11px">${esc(e.date)} · your max ${cents(e.my_max)} · closed ${money(e.price)} (${money(e.total)} delivered) · worth ${worth(e.value)}</span><br>
+        <span style="font-size:11px">${e.by_a_bid ? pill('lost by one bid', '#fb8c00') + ' ' : ''}<span class="muted">needed at least <b style="color:var(--primary-text-color)">${cents(e.needed)}</b>, still ${e.off_pct}% under value</span></span></span></div>`;
+    }).join('');
+    const ub = g.under_bot || {};
+    return `<div style="padding-top:10px">` + grid(4, [
+      stat('SNIPES', g.snipes, '#546e7a', '🎯'),
+      stat('GOT AWAY', g.lost, '#8e24aa', '💨'),
+      stat('BY ONE BID', g.by_a_bid, '#fb8c00', '🤏'),
+      stat('STILL STEALS', g.steals, '#e53935', '💸'),
+    ]) + `<div style="font-size:13px;margin:10px 0 2px;line-height:1.5">${esc(g.takeaway)}</div>
+      <div class="muted" style="font-size:12px;line-height:1.5">Your Gixen snipes that ended in the last ${g.days} days, set against what each auction closed at. "Still a steal" = it closed, delivered, at ${g.steal_pct}% of the bot's value or less${g.steals ? `: ${money(g.steal_gap)} under value across the ${g.steals}` : ''}.
+      ${ub.n ? ` You set ${ub.n} lost snipe${ub.n === 1 ? '' : 's'} under the bot's max; ${ub.cleared} of those closed within it.` : ''}</div>` +
+      (kinds ? cap('WHERE YOUR MAXES LOSE · LOST SNIPES BY KIND OF CARD') + kinds +
+        `<div class="muted" style="font-size:11px;margin-top:4px">Purple: your typical max as a share of the card's value, shipping in. Red mark: where those auctions typically closed. Thin line: full value. A wide gap means that kind rarely comes home at your price.</div>` : '') +
+      cap('STEALS THAT GOT AWAY · BIGGEST FIRST') + (list || empty('None: everything that got away closed near or over its value.')) +
+      (list ? `<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.5">"Needed at least" is a floor, not a promise: an auction closes one bid over the runner-up, so the winner may have had far more behind it. This panel only reports; it never changes a max.</div>` : '') + `</div>`;
+  }],
+
   record: ['Snipe record', false, c => {
     const a = c.d.record;
     const total = (a.wins || 0) + (a.losses || 0);
@@ -2967,17 +3009,37 @@ const PANELS = {
     const age = x => { const n = days(x); if (n == null) return ''; const col = n >= 21 ? '#e53935' : (n >= 14 ? '#fb8c00' : null);
       return col ? ' · ' + pill(n + ' days', col) : ' · ' + n + ' day' + (n === 1 ? '' : 's'); };
     // Got it: in hand, to file. In binder: already filed. (Untracked envelopes never send a delivery email.)
+    // The catch-up (bot's mailcheck.py): late cards nobody has answered for, and the ones marked "never came".
+    const mail = c.d.mail, gone = id => act('Never came', {action: 'missing', ids: [id]}, {hide: true, color: '#e53935'});
+    const late = mail ? transit.filter(x => !x.ms && (mail.late || []).includes(x.id)) : transit.filter(x => days(x) >= 21);
+    const lost = mail ? (mail.missing || []) : [];
+    const pile = mail ? transit.filter(x => !x.ms) : transit;
     const rows = list => list.map(x => `<div data-row class="line" style="display:flex;gap:10px;align-items:center;padding:6px 0;font-size:13px">${cardPic(x)}
       <span style="min-width:0;flex:1">${esc(x.n)}<br><span class="muted" style="font-size:11px">${esc(x.d)}${age(x)} · ${esc(x.sl)} ${x.pg && x.pg !== 'not in the binder' ? ' · goes on ' + esc(x.pg) : ''}</span>
-        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${act('In binder', {action: 'arrived', ids: [x.id], binder: true}, {hide: true})}</span></span><b>${money(x.p)}</b></div>`).join('');
-    const late = transit.filter(x => days(x) >= 21);
+        <span class="row tight" style="margin-top:4px">${act('Got it', {action: 'arrived', ids: [x.id]}, {hide: true, color: '#43a047'})}${act('In binder', {action: 'arrived', ids: [x.id], binder: true}, {hide: true})}${mail && x.s === 'In transit' && !x.ms && (mail.late || []).includes(x.id) ? gone(x.id) : ''}</span></span><b>${money(x.p)}</b></div>`).join('');
+    const left = m => m.left == null ? '' : m.left > 7 ? pill('about ' + m.left + ' days left to claim', '#fb8c00')
+      : m.left >= 0 ? pill('about ' + m.left + ' day' + (m.left === 1 ? '' : 's') + ' left to claim', '#e53935')
+      : pill('claim window probably closed', '#78909c');
+    const lostRows = lost.map(m => `<div data-row class="line" style="padding:6px 0;font-size:13px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="min-width:0">${esc(m.card)}</span><b>${money(m.paid)}</b></div>
+      <div class="muted" style="font-size:11px;margin:2px 0 4px">${esc(m.seller || '')}${m.days != null ? ' · ordered ' + m.days + ' days ago' : ''} ${left(m)}</div>
+      <span class="row tight">${linkBtn('Ask for a refund ↗', 'https://www.ebay.com/mye/myebay/purchase', '#e53935')}${m.item ? linkBtn('Listing ↗', 'https://www.ebay.com/itm/' + m.item, '#546e7a') : ''}${act('It came', {action: 'arrived', ids: [m.id]}, {hide: true, color: '#43a047'})}${act('Not missing', {action: 'missing', ids: [m.id], undo: true}, {hide: true})}</span></div>`).join('');
     const MAIL_SHOWN = 8, mailAll = store('mail_limit', 'page') === 'all';
-    return `<div style="padding-top:10px">` + grid(2, [
-      stat('IN TRANSIT', transit.length, '#1e88e5', '🚚'),
+    const lateIds = late.map(x => x.id);
+    const catchUp = !late.length ? '' : mail
+      ? `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px;line-height:1.5">📮 <b>${late.length} card${late.length === 1 ? ' has' : 's have'} shown "in transit" for 3+ weeks.</b> Cheap cards come untracked, so no delivery email ever arrives.
+          <b>1.</b> Tap <b>Never came</b> on any that aren't in your pile (Show all lists every one). <b>2.</b> Then file the rest in one tap:
+          <div class="row tight" style="margin-top:6px">${act('The other ' + late.length + ' arrived', {action: 'arrived', ids: lateIds, skip_missing: true}, {confirm: 'Tap again: ' + late.length + ' arrived, to file', color: '#43a047'})}${act('…and already in the binder', {action: 'arrived', ids: lateIds, binder: true, skip_missing: true}, {confirm: 'Tap again: ' + late.length + ' arrived and filed'})}</div></div>`
+      : `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px">📮 ${late.length} card${late.length === 1 ? ' has' : 's have'} shown "in transit" for 3+ weeks. Cheap cards often come untracked, so no delivery email ever arrives: check your pile and tap <b>Got it</b> on the ones you have. Anything still missing: message the seller or open a case. ${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>`;
+    return `<div style="padding-top:10px">` + grid(lost.length ? 3 : 2, [
+      stat('IN TRANSIT', pile.length, '#1e88e5', '🚚'),
       stat('WON, NOT SHIPPED', unpaid.length, '#fb8c00', '⏳'),
-    ]) + (late.length ? `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px">📮 ${late.length} card${late.length === 1 ? ' has' : 's have'} shown "in transit" for 3+ weeks. Cheap cards often come untracked, so no delivery email ever arrives: check your pile and tap <b>Got it</b> on the ones you have. Anything still missing: message the seller or open a case. ${linkBtn('eBay purchases ↗', 'https://www.ebay.com/mye/myebay/purchase', '#1e88e5')}</div>` : '') +
-    cap('IN THE MAIL · OLDEST FIRST') + (transit.length ? rows(mailAll ? transit : transit.slice(0, MAIL_SHOWN)) +
-      (transit.length > MAIL_SHOWN ? `<div style="padding-top:8px">${setBtn(mailAll ? 'Show fewer' : 'Show all ' + transit.length, 'mail_limit', mailAll ? 'page' : 'all', '#546e7a')}</div>` : '') : empty('Nothing in transit.')) +
+      ...(lost.length ? [stat('NEVER CAME', lost.length, '#e53935', '🕳️')] : []),
+    ]) + catchUp +
+    (lost.length ? cap('NEVER CAME · ' + money(mail.missing_paid) + ' TO GET BACK') + lostRows +
+      `<div class="muted" style="font-size:11px;margin-top:4px;line-height:1.5">eBay takes a "didn't arrive" report until about 30 days after the latest estimated delivery. The bot doesn't know that date, so the countdown assumes delivery was due ${(mail.case_days || 40) - 30} days after the order: check the real date on the order.</div>` : '') +
+    cap('IN THE MAIL · OLDEST FIRST') + (pile.length ? rows(mailAll ? pile : pile.slice(0, MAIL_SHOWN)) +
+      (pile.length > MAIL_SHOWN ? `<div style="padding-top:8px">${setBtn(mailAll ? 'Show fewer' : 'Show all ' + pile.length, 'mail_limit', mailAll ? 'page' : 'all', '#546e7a')}</div>` : '') : empty('Nothing in transit.')) +
     cap('WON, WAITING ON PAYMENT OR SHIPPING') + (unpaid.length ? rows(mailAll ? unpaid : unpaid.slice(0, MAIL_SHOWN)) +
       (unpaid.length > MAIL_SHOWN && !mailAll ? `<div style="padding-top:8px">${setBtn('Show all ' + unpaid.length, 'mail_limit', 'all', '#546e7a')}</div>` : '') : empty('Nothing waiting.')) + `</div>`;
   }],
@@ -4432,6 +4494,7 @@ class SnipeHuntStrategy {
         section(heading('Big money', 'mdi:cash-multiple'), panel('whales')),
         section(heading('Savings', 'mdi:piggy-bank-outline'), panel('savings')),
         section(heading('Hall of Fame', 'mdi:trophy-variant'), panel('hall'), heading('Brag board', 'mdi:trophy-award'), panel('brag')),
+        section(heading('The ones that got away', 'mdi:weather-windy'), panel('got_away')),
         section(heading('Snipe record', 'mdi:trophy', id('sensor', 'win_rate')), panel('record'),
           ...(id('calendar', 'auctions') ? [heading('Auction calendar', 'mdi:gavel'),
             {type: 'calendar', entities: [id('calendar', 'auctions')], initial_view: 'listWeek', grid_options: {columns: 'full'}}] : [])),
