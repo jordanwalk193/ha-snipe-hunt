@@ -1988,41 +1988,66 @@ const PANELS = {
     const rateTxt = (r, g) => {
       const x = r.rates[g === 'bgs bl' ? 'bgs 10' : g];
       if (!x || x.rate == null) return 'no rate yet';
-      const basis = x.basis === 'sales' ? `${x.n} sold` : x.basis === 'fallback' ? 'estimate' : (g === 'bgs 9.5' ? `PSA 10 rate × ${v.bgs95_share}` : 'PSA 10 rate');
-      return `going <b style="color:var(--primary-text-color)">${x.basis === 'sales' ? '' : '~'}${money(x.rate)}</b> <span class="muted">(${basis})</span> · deal ≤ <b style="color:#2e7d32">${money(x.line)}</b>`;
+      const sold = x.auction_n == null ? `${x.n} sold` : [x.auction_n ? `${x.auction_n} auction${x.auction_n === 1 ? '' : 's'}` : '', x.bin_n ? `${x.bin_n} Buy It Now` : ''].filter(Boolean).join(', ');
+      const basis = x.basis === 'sales' ? sold : x.basis === 'premium' ? `raw sales + ${money(v.premium)} PSA 10 premium` : x.basis === 'fallback' ? 'estimate' : (g === 'bgs 9.5' ? `PSA 10 rate × ${v.bgs95_share}` : 'PSA 10 rate');
+      // the newest third of its auction closes against the oldest third, when it moved 10% or more
+      const trend = x.basis === 'sales' && x.trend != null && Math.abs(x.trend) >= 0.1 ? ` <span style="color:${x.trend < 0 ? '#2e7d32' : '#c62828'}">${x.trend < 0 ? '▼' : '▲'} ${Math.round(Math.abs(x.trend) * 100)}% lately</span>` : '';
+      return `going <b style="color:var(--primary-text-color)">${x.basis === 'sales' ? '' : '~'}${money(x.rate)}</b> <span class="muted">(${basis})</span>${trend} · deal ≤ <b style="color:#2e7d32">${money(x.line)}</b>`;
+    };
+    // The grade ladder: what each grade of this card sells for, cheapest first; the
+    // grades he hunts in bold. Old bots send no ladder: nothing is drawn.
+    const RUNG = {raw: 'Raw', 'psa 9': 'PSA 9', 'bgs 9.5': 'BGS 9.5', 'psa 10': 'PSA 10', 'bgs 10': 'BGS 10'};
+    const ladder = r => {
+      const rungs = (r.ladder || []).filter(x => x.rate != null);
+      if (rungs.length < 2) return '';
+      return `<div class="muted" style="font-size:11px;margin-top:3px" title="What each grade of this card has sold for">🪜 ` + rungs.map(x =>
+        `${x.target ? '<b style="color:var(--primary-text-color)">' : ''}${RUNG[x.grade] || esc(x.grade)} ${money(x.rate)}${x.target ? '</b>' : ''} <span style="opacity:.7">(${x.n})</span>`).join(' → ') + `</div>`;
     };
     const head = r => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">
         <div style="min-width:0"><b>${esc(r.card)}</b>${r.deal ? ' ' + pill('🔥 Deal', '#2e7d32') : ''}
           <div style="font-size:12px;margin-top:3px">${r.owned ? pill('✓ You own ' + esc(r.owned.toUpperCase()), '#2e7d32') + ' ' : ''}${r.have ? pill('You have ' + esc(r.have) + ' ↑', '#ef6c00') + ' ' : ''}<span class="muted">${esc(r.why)}</span></div>
-          <div style="font-size:12px;margin-top:3px">${rateTxt(r, 'psa 10')}</div></div>
+          <div style="font-size:12px;margin-top:3px">${rateTxt(r, 'psa 10')}</div>${ladder(r)}</div>
         <a class="btn" href="${esc(r.ebay)}" target="_blank" rel="noopener" style="flex:none">eBay</a></div>`;
     const copy = (x, r) => {
       const deal = x.under != null && x.under >= 0;
       const rate = (r.rates[x.grade === 'bgs bl' ? 'bgs 10' : x.grade] || {}).rate;
       const cost = x.likely != null ? Math.max(x.likely, x.price) + (x.shipping == null ? 5 : x.shipping) : x.total;   // never below the current bid
       const off = rate ? Math.round((1 - cost / rate) * 100) : null;
+      const ship = x.shipping == null ? 5 : x.shipping;
+      // a Buy It Now over the deal line that takes offers: the offer that would make it a deal
+      const offer = !x.is_auction && x.best_offer && x.line != null && x.total > x.line && x.total <= x.line * 1.5 ? Math.floor(x.line - ship) : null;   // asks far over the line aren't worth an offer
       const how = x.is_auction ? 'auction' + (x.bids ? ', ' + x.bids + (x.bids === 1 ? ' bid' : ' bids') : '') + (x.likely != null ? `, likely ~${money(x.likely)}` : '') + (x.end_time ? ', ends ' + when(x.end_time) : '') : (x.best_offer ? 'Best Offer' : 'Buy It Now');
       return `<div data-row class="line" style="display:flex;gap:10px;align-items:flex-start;padding:8px 0 8px 6px">${thumb(x, 44, 60)}
         <div style="flex:1;min-width:0"><a class="title" href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>
-          <div style="font-size:13px;margin-top:2px">${GRADE(x.grade)} ${deal && off != null ? pill('🔥 ' + off + '% under going rate', '#2e7d32') + ' ' : ''}<b>${money(x.price)}</b> + ${shipTxt(x)} · ${how}</div>
+          <div style="font-size:13px;margin-top:2px">${GRADE(x.grade)}${x.beckett ? ' <span title="Beckett: your looks pick">♥</span>' : ''} ${x.count > 1 ? pill('×' + x.count + ' listed', '#546e7a') + ' ' : ''}${offer > 0 ? pill('💬 Offer ' + money(offer), '#6a1b9a') + ' ' : ''}${deal && off != null ? pill('🔥 ' + off + '% under going rate', '#2e7d32') + ' ' : ''}<b>${money(x.price)}</b> + ${shipTxt(x)} · ${how}</div>
           <div class="muted" style="font-size:11px;margin-top:2px">${x.line != null ? 'deal line ' + money(x.line) + ' · ' : ''}${esc(x.seller)} · eBay item <b style="color:var(--primary-text-color);user-select:all;-webkit-user-select:all">${esc(x.item_id)}</b></div></div></div>`;
     };
     const view = store('slab_view', v.live_n ? 'sale' : 'list');
-    const sale = v.rows.filter(r => r.live.length);
+    // Filters: which grader, which kind of listing, and whether to hide slabs he owns.
+    const grader = store('slab_grader', 'all'), kind = store('slab_type', 'all'), unowned = store('slab_unowned', 'off');
+    const keep = x => (grader === 'all' || x.grade.startsWith(grader))
+      && (kind === 'all' || (kind === 'deals' ? x.under != null && x.under >= 0 : kind === 'auction' ? x.is_auction : kind === 'offer' ? !x.is_auction && x.best_offer : !x.is_auction));
+    const shown = v.rows.filter(r => unowned !== 'on' || !r.owned).map(r => ({...r, live: r.live.filter(keep)}));
+    const filtered = grader !== 'all' || kind !== 'all' || unowned === 'on';
+    const sale = shown.filter(r => r.live.length);
     let body;
     if (view === 'sale') {
       body = sale.length ? sale.map(r => `<div class="line" style="padding:10px 0">${head(r)}${r.live.slice(0, 3).map(x => copy(x, r)).join('')}${r.live.length > 3 ? `<div class="muted" style="font-size:12px;padding:2px 0 0 6px">+${r.live.length - 3} more: <a href="${esc(r.ebay)}" target="_blank" rel="noopener">see them on eBay</a></div>` : ''}</div>`).join('')
+        : filtered ? empty('No copy for sale fits these filters right now.')
         : empty('None of these slabs is for sale in the copies the bot has seen yet. It searches four of them every hour and alerts you when a new one is listed under its deal line.');
     } else {
-      body = v.rows.map(r => `<div class="line" style="padding:9px 0">${head(r)}<div class="muted" style="font-size:12px;margin-top:3px">${r.grades.map(g => g.toUpperCase()).join(' · ')} · ${r.live.length ? `<b style="color:var(--primary-text-color)">${r.live.length}</b> for sale now` : 'none for sale now'}</div></div>`).join('');
+      body = shown.map(r => `<div class="line" style="padding:9px 0">${head(r)}<div class="muted" style="font-size:12px;margin-top:3px">${r.grades.map(g => g.toUpperCase()).join(' · ')} · ${r.live.length ? `<b style="color:var(--primary-text-color)">${r.live.length}</b> for sale now` : 'none for sale now'}</div></div>`).join('');
     }
     return `<div style="padding-top:10px"></div>` + grid(4, [
       stat('ON THE LIST', v.n, '#c62828', '🧱'),
       stat('DEALS NOW', v.deals_n, '#2e7d32', '🔥'),
       stat('FOR SALE', v.live_n, '#1e88e5', '🛒'),
       stat('YOU OWN', v.owned_n, '#546e7a', '📒'),
-    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5">Long-term holds: his key cards in PSA 10 (king), or Beckett 9.5 / 10 / Black Label. CGC and SGC never count. A deal is ${Math.round((1 - v.deal_share) * 100)}% or more under the going rate for that grade; auctions go by their likely close. Edit the list in the bot's slabhunt.md.</div>` +
-      chips('slab_view', 'list', [['sale', '🛒 For sale' + (v.live_n ? ' ' + v.live_n : '')], ['list', '📋 The list']], view) + body;
+    ]) + `<div class="muted" style="font-size:12px;margin:8px 0 6px;line-height:1.5">Long-term holds: his key cards in PSA 10 (king), or Beckett 9.5 / 10 / Black Label. CGC and SGC never count. The going rate is what auctions really close at, recent sales first (Buy It Now sales count half). A deal is ${Math.round((1 - v.deal_share) * 100)}% or more under it for that grade; auctions go by their likely close. Edit the list in the bot's slabhunt.md.</div>` +
+      chips('slab_view', 'list', [['sale', '🛒 For sale' + (v.live_n ? ' ' + v.live_n : '')], ['list', '📋 The list']], view) +
+      chips('slab_grader', 'all', [['all', 'All graders'], ['psa', 'PSA'], ['bgs', 'Beckett ♥']], grader) +
+      chips('slab_type', 'all', [['all', 'Any listing'], ['deals', '🔥 Deals'], ['auction', 'Auctions'], ['bin', 'Buy It Now'], ['offer', '💬 Takes offers']], kind) +
+      chips('slab_unowned', 'off', [['off', 'All cards'], ['on', 'Not owned yet']], unowned) + body;
   }],
 
   priority: ['Case hits & priority', false, c => {
