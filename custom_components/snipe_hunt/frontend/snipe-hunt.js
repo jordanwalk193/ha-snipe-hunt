@@ -1351,6 +1351,45 @@ const openWallTile = t => {
   document.body.appendChild(el);
 };
 
+// The eBay check (bot: src/purchases.py, snapshot `ebay_check`): his real purchase history
+// held against the inventory. One calm line when all is well; what it fixed on its own;
+// and the orders only he can answer for (not shipped, refunded, no order on eBay...).
+const ebayCheck = c => {
+  const e = c.d.ebay_check;
+  if (!e || !e.on && !e.orders) return '';
+  if (!e.orders) return `<div class="muted" style="font-size:12px;margin:8px 0">🧾 eBay check: waiting for its first read of your purchase history.</div>`;
+  const flags = e.flags || [], fixed = e.fixed || [];
+  const read = e.read_at ? ago(new Date(e.read_at * 1000).toISOString()) : 'never';
+  const KIND = {
+    unshipped: ['📦 not shipped', '#e53935', 'Paid, and eBay still shows it not shipped past the estimated delivery'],
+    refunded: ['↩️ refunded', '#e53935', 'eBay refunded this order'],
+    delivered_missing: ['📬 delivered?', '#fb8c00', 'eBay says delivered, you marked it never came'],
+    no_order: ['❓ no order', '#fb8c00', "eBay's purchase history has no order for this card"],
+    count: ['🔢 count', '#fb8c00', 'eBay shows more bought from this listing than the inventory has'],
+    ask: ['🃏 a Walker?', '#1e88e5', 'A Cardinals order with no inventory row'],
+    partial: ['💵 partial refund', '#546e7a', 'Part of this order was refunded'],
+  };
+  const left = f => f.left == null ? '' : f.left > 7 ? ' ' + pill('about ' + f.left + ' days left to claim', '#fb8c00')
+    : f.left >= 0 ? ' ' + pill('about ' + f.left + ' day' + (f.left === 1 ? '' : 's') + ' left to claim', '#e53935')
+    : ' ' + pill('claim window probably closed', '#78909c');
+  const row = f => {
+    const k = KIND[f.kind] || ['check', '#546e7a', ''];
+    const mine = f.id && f.kind === 'unshipped';
+    return `<div data-row class="line" style="padding:6px 0;font-size:13px;line-height:1.35">
+      <div style="display:flex;justify-content:space-between;gap:8px"><span style="min-width:0">${tpill(k[0], k[1], k[2])} ${f.id ? '<b>#' + esc(f.id) + '</b> ' : ''}${esc(f.card || '')}</span>${f.paid != null ? '<b>' + money(f.paid) + '</b>' : ''}</div>
+      <div class="muted" style="font-size:12px;margin:2px 0 4px;overflow-wrap:anywhere">${esc(f.seller || '')}${f.ordered ? ' · ' + esc(f.ordered) : ''} · ${esc(f.why || '')}${f.kind === 'unshipped' ? left(f) : ''}</div>
+      <span class="row tight">${linkBtn('Order on eBay ↗', 'https://www.ebay.com/mye/myebay/purchase', mine ? '#e53935' : '#546e7a')}${f.item ? linkBtn('Listing ↗', 'https://www.ebay.com/itm/' + f.item, '#546e7a') : ''}${mine ? act('It came', {action: 'arrived', ids: [f.id]}, {hide: true, color: '#43a047'}) + act('Never came', {action: 'missing', ids: [f.id]}, {hide: true, color: '#e53935'}) : ''}</span></div>`;
+  };
+  const loud = flags.filter(f => f.kind !== 'partial'), quiet = flags.filter(f => f.kind === 'partial');
+  const head = loud.length
+    ? `<div class="warn" style="margin-top:10px;padding:8px 10px;font-size:12px;line-height:1.5">🧾 <b>eBay check: ${loud.length} order${loud.length === 1 ? ' needs' : 's need'} a look.</b> Read ${esc(read)}: ${e.orders} orders since ${esc(e.covered_from || '?')}, ${e.walker_lines || 0} Walker cards.</div>`
+    : `<div style="margin-top:10px;padding:8px 10px;font-size:12px;line-height:1.5;border-radius:10px;background:#43a04722;border:1px solid #43a04755">🧾 <b>eBay check: every purchase is accounted for.</b> Read ${esc(read)}: ${e.orders} orders since ${esc(e.covered_from || '?')}, ${e.walker_lines || 0} Walker cards.</div>`;
+  const did = fixed.length ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:12px">Fixed on its own: ${fixed.length} lately</summary>${fixed.slice().reverse().map(x =>
+    `<div class="muted" style="font-size:12px;padding:2px 0;overflow-wrap:anywhere">${esc(x.day)} · ${esc(x.what)}</div>`).join('')}</details>` : '';
+  const more = quiet.length ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:12px">${quiet.length} partial refund${quiet.length === 1 ? '' : 's'}</summary>${quiet.map(row).join('')}</details>` : '';
+  return head + loud.map(row).join('') + more + did;
+};
+
 const PANELS = {
   hero: ['Command center', true, c => {
     // The top of Tonight: who the bot is hunting, the numbers that matter, the
@@ -3229,7 +3268,7 @@ const PANELS = {
       (chip ? `<div class="row" style="margin-top:2px">${chip}</div>` : '') + PANELS[chosen[2]][2](c) + foldedStrip(c);
   }],
 
-  incoming: ['Incoming', false, c => PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
+  incoming: ['Incoming', false, c => ebayCheck(c) + PANELS.on_the_way[2](c) + cap('DELIVERED, TO FILE IN THE BINDER') + PANELS.to_file[2](c)],
   needs_details: ['Needs details', false, c => {
     // Cards too vague for the dupe check (the bot's needs_details, src/inventory_sync.py):
     // an unsplit lot, "check the back", a title cut off in the email. Lots first; cards
