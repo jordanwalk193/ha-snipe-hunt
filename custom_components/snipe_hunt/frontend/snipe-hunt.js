@@ -1989,7 +1989,7 @@ const PANELS = {
       const x = r.rates[g === 'bgs bl' ? 'bgs 10' : g];
       if (!x || x.rate == null) return 'no rate yet';
       const sold = x.auction_n == null ? `${x.n} sold` : [x.auction_n ? `${x.auction_n} auction${x.auction_n === 1 ? '' : 's'}` : '', x.bin_n ? `${x.bin_n} Buy It Now` : ''].filter(Boolean).join(', ');
-      const basis = x.basis === 'sales' ? sold : x.basis === 'premium' ? `raw sales + ${money(v.premium)} PSA 10 premium` : x.basis === 'fallback' ? 'estimate' : (g === 'bgs 9.5' ? `PSA 10 rate × ${v.bgs95_share}` : 'PSA 10 rate');
+      const basis = x.basis === 'sales' ? sold : x.basis === 'bin' ? sold + ', too few auctions' : x.basis === 'premium' ? `raw sales + ${money(v.premium)} PSA 10 premium` : x.basis === 'fallback' ? 'estimate' : (g === 'bgs 9.5' ? `PSA 10 rate × ${v.bgs95_share}` : 'PSA 10 rate');
       // the newest third of its auction closes against the oldest third, when it moved 10% or more
       const trend = x.basis === 'sales' && x.trend != null && Math.abs(x.trend) >= 0.1 ? ` <span style="color:${x.trend < 0 ? '#2e7d32' : '#c62828'}">${x.trend < 0 ? '▼' : '▲'} ${Math.round(Math.abs(x.trend) * 100)}% lately</span>` : '';
       return `going <b style="color:var(--primary-text-color)">${x.basis === 'sales' ? '' : '~'}${money(x.rate)}</b> <span class="muted">(${basis})</span>${trend} · deal ≤ <b style="color:#2e7d32">${money(x.line)}</b>`;
