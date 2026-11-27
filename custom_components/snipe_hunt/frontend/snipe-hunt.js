@@ -250,6 +250,16 @@ const closesPill = (p, short) => {
   if (c.ending === 'day') parts.push(short ? 'day end' : 'daytime end');
   return parts.length ? tpill('🧊 ' + parts.join(' · ') + ' ~' + Math.round(100 * c.likely_share) + '%', '#0288d1', `Auctions like this close at ~${Math.round(100 * c.likely_share)}% of the going rate${c.likely ? ' (about ' + money(c.likely) + ' here)' : ''}: where a max is likely to win.`) + ' ' : '';
 };
+// Will the max win (the bot's chance.py): learned from every picked auction that ended.
+const chancePill = (p, short) => {
+  const c = p.chance;
+  if (!c || c.p == null || !p.is_auction) return '';
+  const even = c.even ? ` A bid near ${money(c.even)} would make it even odds.` : '';
+  const how = 'From how auctions like this one ended: this seller, the bid against the value, the room over the current price.';
+  if (c.label === 'likely') return tpill('🎯 ' + (short ? '' : 'likely win ') + '~' + c.p + '%', '#2e7d32', `About ${c.p}% to win at the bot's max.${c.quiet ? " This seller's auctions often end with no bids." : ''} ${how}`) + ' ';
+  if (c.label === 'long') return tpill('🎯 ' + (short ? '' : 'long shot ') + '~' + Math.max(c.p, 2) + '%', '#8e24aa', `About ${Math.max(c.p, 2)}% to win at the bot's max: a free snipe, not one to count on.${even} ${how}`) + ' ';
+  return tpill('🎯 ~' + c.p + '%' + (short ? '' : ' to win'), '#f9a825', `About ${c.p}% to win at the bot's max.${even} ${how}`) + ' ';
+};
 // The card's own price trend from the ledger (the bot's ledger.py): last 30 days against before.
 const trendPill = p => p.trend ? tpill((p.trend.dir === 'up' ? '📈 +' : '📉 ') + p.trend.pct + '%', p.trend.dir === 'up' ? '#2e7d32' : '#c62828',
   `This card's sales: ~${money(p.trend.was)} before, ~${money(p.trend.now)} in the last 30 days (${p.trend.n} sales)`) + ' ' : '';
@@ -871,7 +881,7 @@ const pickLine = (p, lead, extra) => {
         <div style="text-align:right;flex:none">${badge(p)}${sniped(p)}</div>
       </div>
       ${sweepTxt(p)}
-      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${invoicePill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
+      <div style="font-size:13px;margin-top:3px">${newPill(p)}${jackpotPill(p)}${longShotPill(p)}${invoicePill(p)}${edge(p)}${heatPill(p)}${fastTag(p)}${chancePill(p)}${closesPill(p)}${trendPill(p)}${doubts(p)}${money(p.price)} + ${shipTxt(p)}${now}${max}${binTxt(p)}${winTxt(p)}${p.is_auction ? '' : priceAge(p)}</div>
       ${bidBar(p)}
       ${p.deal ? `<div style="font-size:12px;margin-top:2px">${deal(p)}${extra}</div>` : ''}
       <div class="muted" style="font-size:12px;margin-top:2px;line-height:1.3">${esc(whole(p.why))}</div>
@@ -1065,7 +1075,7 @@ const tile = p => {
       <div class="muted tile-sub">worth ~<b style="color:var(--primary-text-color)">${worth(p.value)}</b>${p.value && saved(p) > 0 ? ` · <b style="color:#43a047">save ${worth(saved(p))}</b>` : ''}${p.max_basis === 'sales' ? ' · sales' : ' · est.'}${p.is_auction && p.max != null ? ` · max <b style="color:var(--primary-text-color)">${cents(p.max)}</b>` : ''}${oddsTxt(p)}</div>
       ${offMeter(share)}
       ${p.snipe != null ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Sniped at ${cents(p.snipe)}</div>` : (p.marked ? `<div class="tile-sub" style="color:#43a047;font-weight:600">✓ Added to Gixen${p.marked.max ? ' at ' + cents(p.marked.max) : ''}</div>` : '')}
-      ${trendPill(p)}${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
+      ${trendPill(p)}${chancePill(p, true)}${closesPill(p, true) || (p.via_bin ? `<div class="tile-sub muted">a Buy It Now on an auction: gone at the first bid</div>` : '')}
       <div class="row tight">${buttons}</div>
     </div></div>`;
 };
@@ -1388,6 +1398,20 @@ const ebayCheck = c => {
     `<div class="muted" style="font-size:12px;padding:2px 0;overflow-wrap:anywhere">${esc(x.day)} · ${esc(x.what)}</div>`).join('')}</details>` : '';
   const more = quiet.length ? `<details style="margin-top:4px"><summary class="muted" style="cursor:pointer;font-size:12px">${quiet.length} partial refund${quiet.length === 1 ? '' : 's'}</summary>${quiet.map(row).join('')}</details>` : '';
   return head + loud.map(row).join('') + more + did;
+};
+
+// Will the max win: the forecast's test before it shipped, and how its live calls are doing.
+const chanceCard = k => {
+  if (!k || !k.backtest) return '';
+  const bars = (t, label) => !t || !t.n ? '' : cap(label) + (t.bins || []).map(b =>
+    `<div class="line" style="padding:5px 0;font-size:13px;display:flex;gap:8px;align-items:center"><span style="width:64px">${esc(b.said)}</span>
+      <span style="flex:1;height:8px;border-radius:4px;background:var(--divider-color);overflow:hidden"><span style="display:block;height:100%;width:${Math.min(100, b.won)}%;background:#2e7d32"></span></span>
+      <span class="muted" style="width:150px;text-align:right">won ${b.won}% of ${b.n}</span></div>`).join('');
+  const bt = k.backtest, live = k.live || {};
+  return cap('🎯 WILL THE MAX WIN') +
+    `<div class="muted" style="font-size:12px;line-height:1.5">Each auction pick carries the chance its max wins, learned from the ${k.rows} picked auctions that have ended. ${k.unsold_pct}% of them ended with no bids at all: the opening bid would have won. Tested on ${bt.n} past picks it said ${bt.said}% and ${bt.won}% were winnable${bt.tier_brier ? ` (miss score ${Number(bt.brier).toFixed(2)}, against ${Number(bt.tier_brier).toFixed(2)} going by 🔥🟢🟡 alone; lower is better)` : ''}. The bars show how often each forecast range really came in.</div>` +
+    bars(bt, 'THE TEST · FORECAST AGAINST RESULT') +
+    (live.n ? bars(live, `LIVE FORECASTS SO FAR · SAID ${live.said}%, WON ${live.won}% OF ${live.n}`) : `<div class="muted" style="font-size:12px;margin-top:6px">Live forecasts are scored here as their auctions end.</div>`);
 };
 
 const PANELS = {
@@ -2728,7 +2752,8 @@ const PANELS = {
       `<div class="muted" style="font-size:12px;margin-top:8px;line-height:1.5">How far from the bot's going rate its picked auctions closed, as a median of the ${k.calls} that sold (100% = at the going rate, shipping included). Daytime is 8am–8pm at small sellers; consignors nearly all end in the evening. A 🧊 quiet seller or daytime ending is where a cheapskate max wins; a 🔥 hot seller is where it doesn't, so lowball snipes skip them.</div>` +
       (k.types && Object.keys(k.types).length ? cap('BY CARD TYPE AND ENDING HOUR · HOW THEY CLOSE AGAINST VALUE') + heatGrid(k.types) : '') +
       (k.hot.length ? cap('HOT SELLERS · THEIR AUCTIONS CLOSE OVER VALUE') + k.hot.map(x => row('🔥', x)).join('') : '') +
-      (k.quiet.length ? cap('QUIET SELLERS · WHERE THE MAX WINS') + k.quiet.map(x => row('🧊', x)).join('') : '');
+      (k.quiet.length ? cap('QUIET SELLERS · WHERE THE MAX WINS') + k.quiet.map(x => row('🧊', x)).join('') : '') +
+      chanceCard(c.d.chance);
   }],
 
   calls: ['How the calls turned out', false, c => {
